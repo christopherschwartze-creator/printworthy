@@ -1,0 +1,26 @@
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# environments / tooling
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# runtime artifacts (never commit outputs)
+*.gcode
+_selftest_*.3mf
+_selftest_*.passport.json
+*.passport.json
+prep_out/
+scratch/
+
+# OS noise
+Thumbs.db
+.DS_Store

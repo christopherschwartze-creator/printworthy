@@ -1,0 +1,76 @@
+# meshprep — packaging metadata for the clean OSS release.
+#
+# NAME IS A PLACEHOLDER: verify availability on PyPI (`pip index versions meshprep`
+# or https://pypi.org/project/meshprep/) AND run a trademark clearance before
+# publishing — the prior product hit exactly this trap (`forge` was already taken).
+# Deliberately MIT (not the old product's Apache-2.0): these tools contain no
+# proprietary IP to protect with a patent grant; publishing them open-source is the
+# chosen "free credibility" path (which forfeits the patent option — a conscious
+# trade, see RELEASE_MANIFEST.md).
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "meshprep"
+version = "0.1.0.dev0"
+description = "Drop a mesh, get a print-ready package + a plain-English report: printability pre-flight + source-accurate repair + build orientation + reduced-order print-FEM (warp/strength) + graded-infill 3MF + quad retopo. Permissive, geometric/FEM — not a slicer, not artist-grade. (The animation/auto-rig build ships separately.)"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+license = { text = "MIT" }
+authors = [{ name = "Christopher Schwartze" }]   # set your exact legal name/entity before publishing
+keywords = ["3d-printing", "mesh-repair", "fem", "retopology", "slicer", "warp", "infill", "resin"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Graphics :: 3D Modeling",
+    "Topic :: Scientific/Engineering",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+]
+# Core runtime — PERMISSIVE ONLY (MIT/BSD/Apache/MPL-2). See THIRD_PARTY_NOTICES.md.
+dependencies = [
+    "numpy>=1.24",          # BSD-3
+    "scipy>=1.10",          # BSD-3
+    "trimesh>=4.0",         # MIT
+    "scikit-image>=0.22",   # BSD-3   (voxel + medial skeletonize)
+    "scikit-fem>=9.0",      # BSD-3   (the reduced-order FEM)
+    "pyamg>=5.0",           # MIT     (AMG preconditioner for big FEM systems)
+    "manifold3d>=2.4",      # Apache-2.0 (watertight booleans / genus)
+    "networkx>=3.0",        # BSD-3   (skeleton graph)
+    "matplotlib>=3.7",      # PSF/BSD-compatible (renders)
+]
+
+[project.optional-dependencies]
+fast = ["pyfqmr>=0.2"]          # MIT — faster quadric decimation (optional)
+split = ["coacd>=1.0"]          # MIT — approximate convex decomposition for bed-split (meshprep.split)
+app = ["gradio>=6"]             # Apache-2.0 — the Gradio front door (meshprep.app / `meshprep app`)
+api = ["fastapi>=0.110", "uvicorn>=0.29"]  # MIT/BSD — the farm-endpoint STUB (meshprep.api; NOT hardened)
+# Gold-standard quad retopo. NOT in core: the prebuilt pyQuadriFlow wheel statically
+# links LGPL Eigen and ships no valid license. Use ONLY a self-rebuilt
+# QuadriFlow (`-DBUILD_FREE_LICENSE=ON`, MPL-2 SparseLU). The permissive from-scratch
+# retopo (mcf2 / blossom) is the default and needs nothing here.
+retopo-pyqf = ["pyQuadriFlow"]  # LGPL CAVEAT — see THIRD_PARTY_NOTICES.md before enabling
+dev = ["pytest>=7.0", "ruff>=0.5", "build", "twine"]
+
+[project.scripts]
+meshprep = "meshprep.cli:main"   # meshprep <check|fix|prep|reinforce|calibrate|app> ...
+
+[project.urls]
+Homepage = "https://example.com/meshprep"   # set before publishing
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["meshprep*"]
+
+[tool.setuptools.package-data]
+# warp_calibration.json ships next to _warp_calibrate.py — without it the
+# calibrated-warp auto-upgrade in preflight silently never fires. Named
+# exactly (not *.json) so locally generated selftest artifacts never ship.
+"meshprep.core" = ["warp_calibration.json"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
