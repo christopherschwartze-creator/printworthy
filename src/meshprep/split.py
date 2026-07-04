@@ -18,6 +18,50 @@ Implemented (the CHEAP path only):
 
 Never-raise discipline: any internal failure degrades to
 ``{"ok": False, "parts": [], "note": "split failed: ..."}``.
+
+ROADMAP STUBS IN THIS MODULE (documented, not implemented)
+==========================================================
+`plan_seams()` and `plan_connectors()` below upgrade the CoACD split from
+"loose convex chunks" to "printable parts that reassemble" -- the full smart-
+split feature. Build plan:
+
+SEAMS (plan_seams -- hide cuts where the eye and the load both forgive them)
+  1. CANDIDATES. CoACD's cut interfaces are arbitrary planes. Replace with
+     seam-quality-scored planes: for each pair of adjacent CoACD parts,
+     sweep the interface plane +/- 10% along its normal and score.
+  2. SCORE = (a) CONCAVITY: mean concave dihedral along the plane/surface
+     intersection loop -- the EI neck-cut result (a separating cycle in a
+     concave region is where a seam is invisible; reuse the concave-cycle
+     machinery documented in the Forge neck-cut line) ; (b) LOAD: if a load
+     case is given, penalize planes crossing high fos^-1 regions
+     (strength_analysis field -- do not put a glue joint on the load path);
+     (c) AREA: smaller cross-section = less glue face = better.
+  3. CUT. Boolean-slice the ORIGINAL mesh (manifold3d, exact) at the chosen
+     planes -- CoACD only proposes topology; the final cut runs on the real
+     geometry so fidelity is preserved. Gate each half with
+     _printability.assess_printability.
+CONNECTORS (plan_connectors -- parts must reassemble without a jig)
+  4. For each seam face pair: place 2-3 alignment features on the interface
+     -- cylindrical peg/socket (loose fit: peg d=4 mm, socket d=4.4 mm at
+     0.2 mm nozzle tolerance; expose as --fit) at maximally-spread interior
+     points of the seam polygon (inset >= 2*wall from the boundary).
+     Peg = union on part A, socket = difference on part B (manifold3d again).
+     Print-in-place dovetails are v2; pegs first (simplest thing that works).
+  5. TOLERANCE HONESTY: fit clearances are printer-dependent; ship a 10-min
+     test coupon (`meshprep split --fit-coupon`) the user prints once, then
+     records the working clearance -- same one-coupon philosophy as warp.
+VALIDATION GATES
+  G1 volume conservation: sum(part volumes) - connector adjustments equals
+     original within 1%.
+  G2 watertight + printability PASS per part; every part fits the bed.
+  G3 seam-quality control: on a dumbbell (two spheres + thin neck) the chosen
+     seam must land on the neck, not through a sphere (exercises the exact
+     failure: a naive mid-bbox cut).
+  G4 reassembly: pegs/sockets boolean-verified non-intersecting at nominal
+     clearance and intersecting at zero clearance (fit logic is real).
+KILL: if manifold3d booleans prove unreliable on repaired AI meshes (>5%
+failure on the rebench corpus), fall back to plane cuts without connectors
+and say "connectors unavailable for this mesh".
 """
 from __future__ import annotations
 
@@ -89,6 +133,34 @@ def _load(mesh):
     if not hasattr(m, "faces"):
         raise ValueError(f"not a triangle mesh: {mesh}")
     return m
+
+
+def plan_seams(mesh, parts, *, load_case=None):
+    """STUB (build plan in module docstring, SEAMS section). Score and refine
+    the part-interface planes: concave-dihedral (EI neck-cut) + load-path +
+    cross-section-area scoring, then exact boolean cuts on the original mesh.
+
+    Planned return: {"ok": True, "seams": [{"plane": (origin, normal),
+                     "concavity_score": float, "crosses_load_path": bool,
+                     "area_mm2": float}], "note": str}
+    Current behavior: honest refusal (never raises)."""
+    return {"ok": False, "implemented": False, "seams": [],
+            "note": "seam planning is a documented stub -- build plan in "
+                    "meshprep/split.py (SEAMS section). Nothing was modified."}
+
+
+def plan_connectors(parts, seams, *, fit_mm=0.4, style="peg"):
+    """STUB (build plan in module docstring, CONNECTORS section). Add peg/
+    socket alignment features on each seam interface via exact booleans,
+    with a printable fit coupon for per-printer clearance.
+
+    Planned return: {"ok": True, "parts": [modified meshes],
+                     "n_connectors": int, "fit_mm": float, "note": str}
+    Current behavior: honest refusal (never raises)."""
+    return {"ok": False, "implemented": False, "parts": [],
+            "note": "connector generation is a documented stub -- build plan "
+                    "in meshprep/split.py (CONNECTORS section). Nothing was "
+                    "modified."}
 
 
 def split_for_bed(mesh, profile=None, *, connectors=True, out_dir=None):

@@ -84,6 +84,19 @@ result = meshprep.prep("mypart.glb", profile="generic_fdm", reinforce_load="z")
 print(result["verdict"], "-", result["headline"])   # never raises
 ```
 
+## Roadmap (documented stubs — each module carries its full build plan)
+
+| Feature | Stub | One line |
+|---|---|---|
+| **Warp pre-compensation** | `core/warp_precomp.py` | Invert the validated warp field: pre-deform the mesh so the print comes off the bed straight. The flagship. |
+| **Risk-driven supports** | `core/support_mods.py` | Premortem risk field → support **enforcer/blocker** modifier volumes in the 3MF. |
+| **Stress-mapped multi-material** | `core/multimaterial.py` | The reinforce field assigns **extruders**: rigid on the load path, soft/cheap elsewhere. |
+| **Smart split + connectors** | `split.py` (`plan_seams`, `plan_connectors`) | Seams scored into concave creases (EI neck-cut), peg/socket connectors, fit coupon. |
+| **Instant print quotes** | `quote.py` | Bureau intake: verdict + fix certificate + reproducible cost quote, single file or batch. |
+
+Each stub is callable and returns an honest `{"ok": False, "implemented": False, note}` —
+nothing pretends to work before it does.
+
 ## Status
 
 Alpha / staging. The code is built and validated; this repository is the **clean OSS
