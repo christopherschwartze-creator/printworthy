@@ -1,5 +1,10 @@
 # Deploying the meshprep Space
 
+> First time publishing to Hugging Face? Use the full step-by-step
+> walkthrough instead: `../PUBLISH_TO_HUGGINGFACE.md` (account creation →
+> private smoke test → flip public). This file is the terse operator
+> checklist for repeat deploys.
+
 **Deploying is YOUR outward-facing action.** Nothing here publishes
 anything by itself; the Space only goes live when you create it and push
 this folder under your own Hugging Face account.
