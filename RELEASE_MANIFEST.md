@@ -82,3 +82,12 @@ it via `_deform_score`.)
 - **Per-tool in-tool validation is still pending** (slicer print, Blender pose, warp coupon) —
   the README states this honestly; don't market past "schema-correct / re-loads / poses under
   our LBS — confirm in-tool".
+
+## Premium exclusions
+
+The real implementations behind three roadmap stubs in this repo — FEM warp pre-compensation,
+the bureau/B2B print-quote engine (`quote.py`), and a QuadriFlow-backed retopo-pro tier — live
+in a **separate, proprietary package** (`meshprep_pro`, its own private git repository, not this
+one). The stubs in this public repo stay exactly as documentation of the build plan; they are
+not implemented here and this repo does not depend on `meshprep_pro`. `meshprep_pro` is not
+published anywhere as of this note.
