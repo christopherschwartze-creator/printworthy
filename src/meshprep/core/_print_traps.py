@@ -85,6 +85,10 @@ RES_MIN = 40
 RES_MAX = 110          # hard cap: a 110^3 bool grid + a few copies stays well <2GB
 DEFAULT_RES = 72       # ~72^3 -> sub-second, <0.5GB; the validated working point
 
+# Display cap for the matplotlib 3D backdrop in render_traps (DISPLAY ONLY:
+# every mask, marker and number is computed on the full analysis mesh).
+_RENDER_MAX_FACES = 6000
+
 
 def _auto_res(mesh, memory_budget_mb=1200.0):
     """Voxel cells along the longest bbox axis, kept within a SMALL memory budget
@@ -149,7 +153,7 @@ def _drain_axis(build_dir):
 #  (a) EXTERNAL upward-facing CUPS  (pour-and-pool immersion test)
 # ===========================================================================
 def external_pools(mesh, build_dir, res=None, memory_budget_mb=1200.0,
-                   min_voxels=30):
+                   min_voxels=30, vox=None):
     """Find resin that POOLS in upward-facing basins on the outer surface for build
     direction `build_dir` (resin drains toward -build_dir). Returns
     (pooled_mask, grid, components). HEURISTIC: voxel immersion, not a fluid sim.
@@ -158,14 +162,20 @@ def external_pools(mesh, build_dir, res=None, memory_budget_mb=1200.0,
     bowl) -> fill_holes to recover the solid while leaving an OPEN basin as air ->
     flood air upward from the bottom (-build_dir) exterior slab -> a voxel of air the
     bottom flood cannot reach, but which has solid somewhere below it in its
-    drain-column, is pooled resin held by gravity."""
+    drain-column, is pooled resin held by gravity.
+
+    `vox`: optional precomputed SURFACE voxelization (trimesh VoxelGrid) of
+    `mesh` at the pitch `_pitch_for` would pick -- lets `find_traps` voxelize
+    ONCE and share it across passes (voxelization dominated the measured cost;
+    the masks and numbers are identical because the grid is identical)."""
     try:
         from scipy import ndimage
     except Exception:
         return None, None, []
     try:
-        pitch, res = _pitch_for(mesh, res, memory_budget_mb)
-        vox = mesh.voxelized(pitch=pitch)
+        if vox is None:
+            pitch, res = _pitch_for(mesh, res, memory_budget_mb)
+            vox = mesh.voxelized(pitch=pitch)
         grid = _Grid(vox)
         surf = np.asarray(vox.matrix, bool)
         solid = ndimage.binary_fill_holes(surf)          # open bowl stays air
@@ -211,7 +221,7 @@ def external_pools(mesh, build_dir, res=None, memory_budget_mb=1200.0,
 #  (b) INTERNAL sealed cavities
 # ===========================================================================
 def internal_sealed_voids(mesh, res=None, memory_budget_mb=1200.0, min_voxels=30,
-                          close_iters=1):
+                          close_iters=1, vox=None):
     """Detect SEALED interior air pockets (no opening to the outside) in `mesh` --
     e.g. a hollow shell with no drain hole. Orientation-INDEPENDENT (a sealed void
     traps resin no matter how you tilt it; it needs a vent). Returns
@@ -221,14 +231,18 @@ def internal_sealed_voids(mesh, res=None, memory_budget_mb=1200.0, min_voxels=30
     printed wall reads as a solid sheet, killing the air INSIDE the wall that thin
     surface voxelization would otherwise leave) -> fill_holes; a void that fill_holes
     closes is enclosed -> sealed/trapped. A void that opens to the surface (a real
-    drain hole wider than ~2.5*pitch) is NOT closed by fill_holes -> not reported."""
+    drain hole wider than ~2.5*pitch) is NOT closed by fill_holes -> not reported.
+
+    `vox`: optional precomputed SURFACE voxelization shared by the caller
+    (see `external_pools`); same grid -> identical masks and numbers."""
     try:
         from scipy import ndimage
     except Exception:
         return None, None, []
     try:
-        pitch, res = _pitch_for(mesh, res, memory_budget_mb)
-        vox = mesh.voxelized(pitch=pitch)
+        if vox is None:
+            pitch, res = _pitch_for(mesh, res, memory_budget_mb)
+            vox = mesh.voxelized(pitch=pitch)
         grid = _Grid(vox)
         surf = np.asarray(vox.matrix, bool)
         closed = ndimage.binary_closing(surf, iterations=close_iters) if close_iters else surf
@@ -344,7 +358,8 @@ def _embree():
 #  top-level API
 # ===========================================================================
 def find_traps(mesh, build_dir, *, hollow_wall_mm=None, res=None,
-               memory_budget_mb=1200.0, min_volume_cm3=0.02, verbose=False):
+               memory_budget_mb=1200.0, min_volume_cm3=0.02, verbose=False,
+               keep_masks=False):
     """Detect resin traps in `mesh` for build/gravity direction `build_dir`.
 
     Parameters
@@ -363,6 +378,12 @@ def find_traps(mesh, build_dir, *, hollow_wall_mm=None, res=None,
       internal_cavities : [ {centroid, volume_cm3, type='internal_cavity',
                              kind='sealed'|'hollowed', n_voxels, vent} ],
       n_traps, total_trapped_cm3, vents (flat list), notes.
+
+    keep_masks : if True, the raw voxel masks + grids ride along under the
+      PRIVATE key '_render_cache' so `render_traps` can draw without
+      re-voxelizing (the re-voxelization used to double the trap cost). The
+      key holds numpy arrays -- NOT JSON-serializable -- so callers that
+      persist the result must leave keep_masks False (the default) or pop it.
     """
     result = {"ok": False, "build_dir": [round(float(x), 4) for x in _unit(build_dir)],
               "external_cups": [], "internal_cavities": [], "vents": [],
@@ -378,10 +399,21 @@ def find_traps(mesh, build_dir, *, hollow_wall_mm=None, res=None,
 
     min_vox_floor = 8  # absolute label-noise floor
 
+    # ONE surface voxelization shared by both passes below (they used to each
+    # voxelize the same mesh at the SAME pitch -- identical grids, so sharing
+    # changes nothing but the wall time; voxelization was the measured
+    # analyze-stage hotspot). On any failure fall back to per-pass voxelization.
+    vox = None
+    try:
+        pitch, _ = _pitch_for(mesh, res, memory_budget_mb)
+        vox = mesh.voxelized(pitch=pitch)
+    except Exception:
+        vox = None
+
     # ---- (a) external cups ----
     pooled, gridA, cupsA = external_pools(
         mesh, build_dir, res=res, memory_budget_mb=memory_budget_mb,
-        min_voxels=min_vox_floor)
+        min_voxels=min_vox_floor, vox=vox)
     if gridA is not None:
         result["voxel_res"] = int(round(float(mesh.bounding_box.extents.max()) / gridA.pitch))
         result["pitch_mm"] = round(gridA.pitch, 4)
@@ -400,7 +432,8 @@ def find_traps(mesh, build_dir, *, hollow_wall_mm=None, res=None,
     # ---- (b) internal cavities ----
     # b1: sealed voids already present (e.g. a hollow shell with no hole)
     voids, gridB, voidsC = internal_sealed_voids(
-        mesh, res=res, memory_budget_mb=memory_budget_mb, min_voxels=min_vox_floor)
+        mesh, res=res, memory_budget_mb=memory_budget_mb,
+        min_voxels=min_vox_floor, vox=vox)
     if gridB is not None:
         if "pitch_mm" not in result:
             result["pitch_mm"] = round(gridB.pitch, 4)
@@ -448,6 +481,9 @@ def find_traps(mesh, build_dir, *, hollow_wall_mm=None, res=None,
     result["internal_cavity_cm3"] = round(sum(c["volume_cm3"] for c in cavs), 3)
     result["ok"] = True
     result["method"] = "geometric voxel drainage (immersion flood + sealed-void), NOT a fluid sim"
+    if keep_masks:
+        result["_render_cache"] = {"pooled": pooled, "grid_a": gridA,
+                                   "voids": voids, "grid_b": gridB}
     if verbose:
         say(f"  traps: {len(cups)} external cup(s) {result['external_cup_cm3']}cm3, "
               f"{len(cavs)} internal cavity(ies) {result['internal_cavity_cm3']}cm3 "
@@ -511,9 +547,10 @@ def best_drain_orientation(mesh, candidates=None, hollow_wall_mm=None,
 # ===========================================================================
 def render_traps(mesh, result, out_png, title=None):
     """Draw `mesh` (translucent) laid flat in its build orientation with pooled /
-    trapped regions highlighted and suggested vent markers. Recomputes the trap
-    VOXEL MASKS for display (the result dict only stores summaries). Returns out_png
-    or None (never raises)."""
+    trapped regions highlighted and suggested vent markers. Reuses the voxel
+    masks from `find_traps(..., keep_masks=True)` when present ('_render_cache');
+    otherwise recomputes them for display (the summary fields alone are not
+    enough to draw). Returns out_png or None (never raises)."""
     try:
         import matplotlib
         matplotlib.use("Agg")
@@ -531,15 +568,32 @@ def render_traps(mesh, result, out_png, title=None):
             return p
 
         b = mesh.copy()
+        # DISPLAY-ONLY simplification: the two 3D panels each push every
+        # backdrop triangle through matplotlib's painter sort; the backdrop is
+        # a uniform translucent silhouette, so drawing it decimated loses no
+        # information (all masks/markers/numbers come from the full analysis).
+        if len(b.faces) > _RENDER_MAX_FACES:
+            try:
+                from ._mesh_util import decimate as _decimate
+                b = _decimate(b, _RENDER_MAX_FACES)
+            except Exception:
+                pass
         b.apply_transform(R)
         zmin = float(b.vertices[:, 2].min())
         b.apply_translation([0, 0, -zmin])
 
         fig = plt.figure(figsize=(13, 6))
 
-        # recompute masks for the visualization (small extra cost)
-        pooled, gridA, _ = external_pools(mesh, bd)
-        voids, gridB, _ = internal_sealed_voids(mesh)
+        # masks for the visualization: reuse find_traps' own (identical grid,
+        # zero extra cost); recompute only when the cache is absent (legacy
+        # callers) -- recomputing used to DOUBLE the trap-analysis cost.
+        cache = result.get("_render_cache") or {}
+        pooled, gridA = cache.get("pooled"), cache.get("grid_a")
+        voids, gridB = cache.get("voids"), cache.get("grid_b")
+        if pooled is None or gridA is None:
+            pooled, gridA, _ = external_pools(mesh, bd)
+        if voids is None or gridB is None:
+            voids, gridB, _ = internal_sealed_voids(mesh)
 
         def _draw(ax):
             tris = b.triangles
@@ -597,8 +651,12 @@ def render_traps(mesh, result, out_png, title=None):
                       f"res {result.get('voxel_res')} pitch {result.get('pitch_mm')}mm "
                       "| geometric drainage, not a fluid sim", fontsize=9)
 
-        plt.tight_layout()
-        plt.savefig(out_png, dpi=115, bbox_inches="tight")
+        # NOTE: tight_layout() and bbox_inches="tight" each force a FULL extra
+        # 3D draw of the figure (the projection sort is the render hotspot);
+        # fixed margins produce the same picture for one draw instead of three.
+        fig.subplots_adjust(left=0.02, right=0.98, top=0.86, bottom=0.04,
+                            wspace=0.06)
+        plt.savefig(out_png, dpi=115)
         plt.close()
         return out_png
     except Exception as e:

@@ -9,6 +9,11 @@ really usable area is a little smaller (skirt/brim, clips, purge), which is why
 
 * `get_profile(name)` NEVER raises: unknown / None / garbage -> `generic_fdm`
   (a note in the returned dict says the fallback fired).
+* `PREP_PRESETS` / `get_preset(name)`: behaviour bundles for `prep()` keyed by
+  HOSTING CONTEXT (not printer hardware). The only preset today is "space"
+  (the hosted HF-Space demo: 2 vCPU, no slicer binary, soft time budget).
+  `get_preset` never raises; unknown names return a fallback note instead of
+  silently ignoring a typo.
 * `scale_to_fit(mesh, profile)` -> does-it-fit + suggested uniform scale.
   HONESTY: it tests the axis-aligned bbox in all 6 axis permutations (i.e.
   90-degree re-orientations only). A diagonal placement can fit slightly more;
@@ -108,6 +113,58 @@ def get_profile(name=None):
     p = dict(PRINTER_PROFILES[key])
     p["name"] = key
     return p
+
+
+# ---------------------------------------------------------------------------
+#  prep() presets -- behaviour bundles for a hosting context (NOT printers).
+#  A printer profile says what the machine is; a prep preset says where the
+#  pipeline is running and what it may spend. Applied by meshprep.pipeline.
+# ---------------------------------------------------------------------------
+PREP_PRESETS = {
+    "space": {
+        # Hosted demo (HF Space class: 2 vCPU / free tier). The fixed feature
+        # slice is: verdict + faithful fix (surface-kept certificate) + size
+        # sanity + design review + prep.stl download + OPT-IN warp physics.
+        # Everything local-only or heavy is off.
+        "slicer_savings": False,     # no slicer binary on the Space host
+        "reinforce": False,          # graded-infill 3MF excluded from the slice
+        "retopo": False,             # excluded from the slice
+        "fem_strength": False,       # 4-FEM orientation screening: too slow
+        "max_faces": 20_000,         # analysis-proxy face cap for 2 vCPU
+                                     # (the ingress DECIMATE cap is unchanged;
+                                     # this only lowers prep()'s working copy)
+        "fem_warp_max_elem": 1500,   # opt-in warp FEM element cap (<= 1500)
+        "stage_budget_s": 120.0,     # SOFT budget: past this, remaining
+                                     # OPTIONAL stages are skipped with an
+                                     # honest note. The fix, the re-check and
+                                     # the verdict are NEVER skipped.
+        "fast_recheck": True,        # post-fix re-check re-measures topology +
+                                     # printability; the voxel trap census is
+                                     # carried forward, labelled as such
+        "hide_local_paths": True,    # never surface server temp paths to users
+    },
+}
+
+
+def get_preset(name=None):
+    """Return a COPY of the named prep preset ({} for None). Never raises.
+    A dict passes through (caller-rolled preset); an unknown name returns
+    {'fallback_note': ...} so the pipeline can SAY the preset didn't apply
+    instead of silently ignoring a typo."""
+    if not name:
+        return {}
+    if isinstance(name, dict):
+        p = dict(name)
+        p.setdefault("name", "custom")
+        return p
+    key = _canon(name)
+    for k in PREP_PRESETS:
+        if _canon(k) == key:
+            p = dict(PREP_PRESETS[k])
+            p["name"] = k
+            return p
+    return {"name": str(name),
+            "fallback_note": f"unknown preset {name!r} -> no preset applied"}
 
 
 # ---------------------------------------------------------------------------
@@ -220,6 +277,17 @@ def run_self_tests(verbose=True):
     details["test5_never_raise"] = bool(t5)
     ok_all &= bool(t5)
 
+    # 6. prep presets: space bundle sane; unknown -> fallback note; None -> {}
+    sp = get_preset("space")
+    t6 = (sp.get("slicer_savings") is False and sp.get("retopo") is False
+          and sp.get("reinforce") is False
+          and sp.get("fem_warp_max_elem", 9999) <= 1500
+          and isinstance(sp.get("stage_budget_s"), (int, float)))
+    t6 &= get_preset(None) == {}
+    t6 &= "fallback_note" in get_preset("no_such_preset")
+    details["test6_prep_presets"] = bool(t6)
+    ok_all &= bool(t6)
+
     if verbose:
         say("PROFILES SELF-TESTS")
         say(f"  1. get_profile fallback/alias/custom      -> {'PASS' if t1 else 'FAIL'}")
@@ -229,6 +297,7 @@ def run_self_tests(verbose=True):
             f"-> {'PASS' if t3 else 'FAIL'}")
         say(f"  4. 300mm bar suggested_scale {s} -> {'PASS' if t4 else 'FAIL'}")
         say(f"  5. never-raise on None mesh -> {'PASS' if t5 else 'FAIL'}")
+        say(f"  6. prep presets (space bundle) -> {'PASS' if t6 else 'FAIL'}")
         say(f"  ALL: {'PASS' if ok_all else 'FAIL'}")
     return bool(ok_all), details
 

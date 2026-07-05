@@ -173,7 +173,11 @@ def run_checks(mesh: trimesh.Trimesh, *, print_mm: float, nozzle_mm: float,
     try:
         from . import _print_traps as tp
         bd = build_dir if build_dir is not None else np.array([0.0, 0.0, 1.0])
-        tr = tp.find_traps(m, np.asarray(bd, float))
+        # keep_masks: lets render_traps reuse the voxel masks instead of
+        # re-voxelizing (which used to double the trap cost); the private
+        # cache is popped right after rendering, so nothing non-serializable
+        # leaves this function.
+        tr = tp.find_traps(m, np.asarray(bd, float), keep_masks=True)
         report["channels"]["resin_traps"] = {
             "n_traps": tr.get("n_traps"),
             "external_cup_cm3": tr.get("external_cup_cm3"),
@@ -189,6 +193,8 @@ def run_checks(mesh: trimesh.Trimesh, *, print_mm: float, nozzle_mm: float,
             report["renders"]["resin_traps"] = png
         except Exception:
             pass
+        finally:
+            tr.pop("_render_cache", None)
     except Exception as e:
         report["channels"]["resin_traps"] = {"error": f"{type(e).__name__}: {e}"}
 
@@ -298,11 +304,20 @@ def build_cert(report: dict) -> dict:
             "Run the free Fix (below): it seals the mesh into a single solid.")
     else:
         good.append("Watertight (a single sealed solid)")
-    if facts["watertight"] and facts.get("genus") not in (None, 0):
-        add("WARN", f"{facts['genus']} unexpected tunnel/handle(s)",
+    _genus = facts.get("genus")
+    if facts["watertight"] and isinstance(_genus, int) and _genus > 0:
+        add("WARN", f"{_genus} unexpected tunnel/handle(s)",
             "The surface has handles (genus > 0). Often these are phantom tunnels from "
             "the source geometry, not real holes you intended.",
             "Inspect the heatmap; the Fix can also remove thin phantom bridges.")
+    elif facts["watertight"] and isinstance(_genus, int) and _genus < 0:
+        # negative genus = the Euler count is inconsistent (many disjoint
+        # pieces / non-manifold joins). The raw number is meaningless to a
+        # user — never show it.
+        add("WARN", "Surface connects to itself in unexpected ways",
+            "The shell count does not add up to a simple solid — typical of a model "
+            "made of many separate or interpenetrating pieces.",
+            "Inspect the render; if the model looks whole, this is usually harmless.")
     if facts["watertight"] and not facts["winding_consistent"]:
         add("WARN", "Inconsistent face winding",
             "Some faces point inward — normals are not coherent.",

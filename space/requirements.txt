@@ -1,0 +1,28 @@
+# Pinned to the exact versions the app was verified against (2026-07-05,
+# Python 3.11). Re-pin deliberately, never by drift.
+gradio==6.19.0
+gradio_client==2.5.0
+
+# meshprep core dependencies (from pyproject.toml, pinned)
+numpy==2.2.6
+scipy==1.15.0
+trimesh==4.11.5
+scikit-image==0.26.0
+scikit-fem==12.0.2
+pyamg==5.3.0
+manifold3d==3.4.1
+networkx==3.5
+matplotlib==3.10.6
+
+# Embree ray backend for trimesh: the thin-wall / premortem analysis casts
+# one inward ray per face; pure-python casting is O(faces^2) and was the
+# per-job time hotspot (measured locally on the worst corpus part:
+# 278.6 s -> 136.1 s total with embree). cp310/cp311 manylinux_2_28 wheels
+# verified available on PyPI for this exact version.
+embreex==4.4.0
+
+# meshprep itself, shipped as a wheel inside this Space repo.
+# Rebuild after any package change with:
+#   pip wheel C:/Users/mecht/Project_EI/3DEI/meshprep -w space/wheels --no-deps
+# and update the filename below if the version changes.
+./wheels/meshprep-0.1.0.dev0-py3-none-any.whl

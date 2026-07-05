@@ -120,6 +120,17 @@ THIN_PAIR_BUDGET = 8_000_000   # ray*candidate pairs/batch (~<600MB working)
 THIN_RAY_BATCH_MIN = 32
 THIN_RAY_BATCH_MAX = 512
 
+# Display cap for the matplotlib 3D panels in render_premortem (DISPLAY ONLY:
+# all risk fields and summary numbers are computed on the full analysis mesh;
+# the picture maps them onto a decimated proxy, disclosed in the text panel).
+_RENDER_MAX_FACES = 6000
+
+# Fraction of total surface area that must read at-or-below a thickness for
+# it to count as the part's "thinnest wall" (see summary['thin']). 0.2% of
+# the surface is far larger than any sliver-face artifact yet small enough
+# that a genuinely thin feature (a pin, a blade, a thin plate) still trips it.
+MIN_WALL_SUPPORT_FRAC = 0.002
+
 
 def _thin_ray_batch(nf: int) -> int:
     """Memory-bounded ray batch for the pure-python intersector (see above)."""
@@ -167,23 +178,38 @@ def _thin_wall_channel(mesh, nozzle=0.4):
     HEURISTIC note: a SINGLE inward ray approximates local wall thickness; thin tubes,
     grazing folds, or non-orthogonal walls can read thinner or thicker than a true
     medial-axis thickness. Returns (risk (F,), thickness (F,) float with inf where
-    no hit)."""
+    no hit).
+
+    FALSE-POSITIVE guard (edge artifacts): a ray cast from a face beside a concave
+    edge/fillet can graze the ADJACENT face micrometres away — that distance is an
+    edge artifact, not a wall. A genuine wall's far side is a roughly OPPOSING
+    surface, so we require the hit face's outward normal to point along the ray
+    (dot > ~0.34, i.e. within ~70 deg). Grazing/side hits are discarded (the face
+    then reads "no hit" = not thin — the conservative direction for a gate that
+    can only refuse, never upgrade)."""
     nf = len(mesh.faces)
     thick = np.full(nf, np.inf)
     try:
         inter, fast = _intersector(mesh)
-        origins = np.asarray(mesh.triangles_center, float) - 1e-3 * np.asarray(mesh.face_normals, float)
-        dirs = -np.asarray(mesh.face_normals, float)
+        fnorm = np.asarray(mesh.face_normals, float)
+        origins = np.asarray(mesh.triangles_center, float) - 1e-3 * fnorm
+        dirs = -fnorm
         # Cast in memory-bounded batches on the pure-python engine (see
         # _thin_ray_batch). embree is O(1)/ray so one shot is fine there.
         batch = nf if fast else _thin_ray_batch(nf)
         for s in range(0, nf, max(1, batch)):
             o = origins[s:s + batch]
             v = dirs[s:s + batch]
-            locs, ray_idx, _ = inter.intersects_location(o, v, multiple_hits=False)
+            locs, ray_idx, tri_idx = inter.intersects_location(
+                o, v, multiple_hits=False)
             if len(ray_idx):
                 d = np.linalg.norm(locs - o[ray_idx], axis=1)
-                ok = d > 1e-4
+                # exit-face alignment: far side must roughly oppose the near
+                # side (see docstring) — kills grazing edge-artifact readings
+                align = np.einsum("ij,ij->i",
+                                  fnorm[np.asarray(tri_idx, int)],
+                                  v[ray_idx])
+                ok = (d > 1e-4) & (align > 0.34)
                 # ray_idx is LOCAL to this batch; shift back to global face ids
                 gidx = ray_idx[ok] + s
                 # nearest inward hit per face
@@ -379,12 +405,37 @@ def premortem(mesh, build_dir=None, *, nozzle=0.4, crit_deg=45.0,
     try:
         tc, thick = _thin_wall_channel(mesh, nozzle=nozzle)
         finite = np.isfinite(thick)
+        # AREA-SUPPORTED minimum wall: the absolute per-face minimum is
+        # dominated by sliver faces along fillets/edges on real CAD parts
+        # (observed sub-0.1mm readings on clean watertight uploads). The
+        # reported thinnest wall is the thickness at which the thinnest
+        # MIN_WALL_SUPPORT_FRAC of the surface AREA accumulates — a real
+        # wall region has area; an edge artifact does not. The raw per-face
+        # minimum stays available as min_wall_raw_mm (debug/honesty).
+        mw = None
+        raw = None
+        if finite.any():
+            areas = np.asarray(mesh.area_faces, float)[finite]
+            vals = thick[finite]
+            order = np.argsort(vals)
+            cum = np.cumsum(areas[order])
+            target = MIN_WALL_SUPPORT_FRAC * float(
+                np.asarray(mesh.area_faces, float).sum())
+            k = int(np.searchsorted(cum, max(target, 0.0)))
+            k = min(k, len(vals) - 1)
+            mw = float(vals[order][k])
+            raw = float(vals.min())
         summary["thin"] = {
             "n_thin_faces": int((tc > 0.05).sum()),
-            "min_wall_mm": (round(float(thick[finite].min()), 3) if finite.any() else None),
+            "min_wall_mm": (round(mw, 3) if mw is not None else None),
+            "min_wall_raw_mm": (round(raw, 3) if raw is not None else None),
+            "min_wall_support_frac": MIN_WALL_SUPPORT_FRAC,
             "thin_threshold_mm": round(2.0 * nozzle, 3),
             "frac_thin_faces": round(float((tc > 0.05).mean()), 4),
-            "heuristic": "single inward-ray Shape-Diameter-Function per face",
+            "heuristic": "single inward-ray Shape-Diameter-Function per face; "
+                         "min wall is area-supported (thinnest "
+                         f"{MIN_WALL_SUPPORT_FRAC:.1%} of surface area), "
+                         "raw per-face min kept separately",
         }
     except Exception as e:
         tc = np.zeros(nf); summary["thin"] = {"error": str(e)}
@@ -484,6 +535,26 @@ def render_premortem(mesh, out_png, build_dir=None, result=None, title=None,
         except Exception:
             b = mesh
 
+        # DISPLAY proxy: five 3D panels each push every triangle through
+        # matplotlib's painter sort, which dominated the analyze stage's wall
+        # time above ~6k faces. The RISK FIELDS and every summary number stay
+        # full-resolution; only the picture is drawn on a decimated copy, each
+        # display face coloured by its nearest ANALYSED face (same field, at
+        # display resolution). `sel` maps display face -> analysed face.
+        sel = None
+        n_full = len(b.faces)
+        if n_full > _RENDER_MAX_FACES:
+            try:
+                from ._mesh_util import decimate as _decimate
+                bd_disp = _decimate(b.copy(), _RENDER_MAX_FACES)
+                if 0 < len(bd_disp.faces) < n_full:
+                    from scipy.spatial import cKDTree
+                    sel = cKDTree(np.asarray(b.triangles_center, float)).query(
+                        np.asarray(bd_disp.triangles_center, float))[1]
+                    b = bd_disp
+            except Exception:
+                sel = None
+
         tris = b.triangles
 
         def _cmap(name):
@@ -497,7 +568,10 @@ def render_premortem(mesh, out_png, build_dir=None, result=None, title=None,
 
         def _add(ax, field, ttl, cmap="turbo", elev=-35, azim=-60, plate=True):
             cmap_o = _cmap(cmap)
-            fc = cmap_o(np.clip(field, 0, 1))
+            f = np.asarray(field, float)
+            if sel is not None:                 # map field to the display proxy
+                f = f[sel]
+            fc = cmap_o(np.clip(f, 0, 1))
             pc = Poly3DCollection(tris, facecolors=fc, edgecolor="none", linewidths=0)
             pc.set_alpha(None)
             ax.add_collection3d(pc)
@@ -559,11 +633,18 @@ def render_premortem(mesh, out_png, build_dir=None, result=None, title=None,
             "",
             "ALL CHANNELS ARE HEURISTICS",
         ]
+        if sel is not None:                     # display-proxy disclosure
+            lines.append(f"(picture drawn on {len(b.faces):,} of "
+                         f"{n_full:,} analysed faces)")
         ax.text(0.0, 1.0, "\n".join(lines), va="top", ha="left", fontsize=9,
                 family="monospace")
 
-        plt.tight_layout()
-        plt.savefig(out_png, dpi=110, bbox_inches="tight")
+        # NOTE: tight_layout() and bbox_inches="tight" each force a FULL extra
+        # 3D draw (the projection sort is the render hotspot); fixed margins
+        # give the same picture for one draw instead of three.
+        fig.subplots_adjust(left=0.01, right=0.97, top=0.93, bottom=0.02,
+                            wspace=0.05, hspace=0.10)
+        plt.savefig(out_png, dpi=110)
         plt.close(fig)
         return out_png
     except Exception as e:

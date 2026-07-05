@@ -473,3 +473,1445 @@ def attach(result, md, js, out_dir=None) -> dict:
             json_path = None
     return {"markdown": md, "json": js, "md_path": md_path,
             "json_path": json_path}
+
+
+# =============================================================================
+#  REVIEW DOCUMENT — the Space-facing novice page (ADDITIVE layer)
+# =============================================================================
+# `build_review(result)` renders the browser-tab review page per the final
+# synthesized spec (verdict -> what-changed -> size -> pictures -> ranked
+# cards -> download+shop note -> optional warp -> fine print).
+# `review_selfcheck(md)` mechanically tests the spec's acceptance criteria
+# and returns a list of violations (empty = clean) for validators / CI.
+#
+# House rules honoured here:
+#   * additive: build_report/attach above are untouched; this layer READS the
+#     same result dict; missing keys degrade to omitted content, never raise.
+#   * honesty: numbers keep their labels (measured / estimate / uncalibrated);
+#     language may simplify, never upgrade; a refusal is a refusal.
+#   * the review string is UTF-8 (em-dashes, degree sign, multiplication sign);
+#     console printing goes through core/_mesh_util.ascii_console (see the
+#     __main__ smoke harness at the bottom).
+#   * Space runtime pin (verified installed on this box): gradio==6.19.0,
+#     gradio_client==2.5.0 — these exact versions belong in the space
+#     requirements file.
+import math
+import re
+
+# --- everyday-object anchors (lookup tables; plain words, no jargon) ---------
+_RV_SIZE_ANCHORS = [
+    (10.0,   "the size of a grain of rice"),
+    (20.0,   "the size of a fingernail"),
+    (35.0,   "the length of a wine cork"),
+    (55.0,   "the size of a golf ball"),
+    (80.0,   "the width of a credit card"),
+    (110.0,  "the height of a chess king"),
+    (160.0,  "the height of a smartphone"),
+    (230.0,  "the height of a sheet of paper"),
+    (350.0,  "the size of a shoebox"),
+]
+_RV_SIZE_ANCHOR_BIG = "bigger than a basketball"
+
+_RV_DEV_ANCHORS = [
+    (0.0,   "no measurable change at all"),
+    (0.03,  "about a quarter of a human hair"),
+    (0.08,  "about the width of a human hair"),
+    (0.15,  "thinner than a sheet of paper"),
+    (0.35,  "about the thickness of a business card"),
+    (0.80,  "about the thickness of a credit card"),
+    (1.50,  "about the thickness of a coin"),
+]
+_RV_DEV_ANCHOR_BIG = ("thicker than a coin — look closely at the pictures "
+                      "below before printing")
+
+
+def _rv_size_anchor(mm):
+    try:
+        mm = float(mm)
+    except (TypeError, ValueError):
+        return "an everyday object"
+    for lim, word in _RV_SIZE_ANCHORS:
+        if mm < lim:
+            return word
+    return _RV_SIZE_ANCHOR_BIG
+
+
+def _rv_dev_anchor(mm):
+    try:
+        mm = float(mm)
+    except (TypeError, ValueError):
+        return "a very small distance"
+    for lim, word in _RV_DEV_ANCHORS:
+        if mm <= lim:
+            return word
+    return _RV_DEV_ANCHOR_BIG
+
+
+def _rv_fmt(x, nd=2):
+    """Format a number compactly ('97.4', '100', '0.06'); str(x) fallback."""
+    try:
+        xf = float(x)
+    except (TypeError, ValueError):
+        return str(x)
+    if xf != xf or xf in (float("inf"), float("-inf")):   # NaN / inf
+        return "?"
+    if 0 < abs(xf) < 0.01:
+        nd = max(nd, 3)
+    s = f"{xf:.{nd}f}".rstrip("0").rstrip(".")
+    return s or "0"
+
+
+def _rv_num(x):
+    """float(x) or None (never raises)."""
+    try:
+        v = float(x)
+        return v if v == v and v not in (float("inf"), float("-inf")) else None
+    except (TypeError, ValueError):
+        return None
+
+
+# --- render sanitising: NEVER a server-local path on the page -----------------
+_RV_RENDER_MAX_BYTES = 4 * 1024 * 1024
+
+
+def _rv_render_uri(p):
+    """A render reference safe to embed in the review: pass through data:/http(s)
+    URIs; inline a local image file as a base64 data URI (self-contained in the
+    browser AND in the downloaded review.md); anything else (dead/leaky local
+    path) -> None so the picture is omitted rather than broken. Never raises."""
+    if not isinstance(p, str) or not p.strip():
+        return None
+    if p.startswith(("data:", "http://", "https://")):
+        return p
+    try:
+        if os.path.isfile(p) and os.path.getsize(p) <= _RV_RENDER_MAX_BYTES:
+            ext = os.path.splitext(p)[1].lower().lstrip(".") or "png"
+            if ext == "jpg":
+                ext = "jpeg"
+            if ext in ("png", "jpeg", "gif", "webp"):
+                import base64
+                with open(p, "rb") as fh:
+                    b64 = base64.b64encode(fh.read()).decode("ascii")
+                return f"data:image/{ext};base64,{b64}"
+    except Exception:
+        pass
+    return None
+
+
+# --- plain-language scrubber: raw engine strings NEVER reach the novice page --
+# Ordered (pattern, replacement); case-insensitive unless the pattern says so.
+# This may only SIMPLIFY language — every number and claim passes through
+# unchanged; only vocabulary is translated.
+_RV_PLAIN_SUBS = [
+    (r"Set the print size \(or assume_unit='?m'?\)",
+     "Set the print size (or tell us the file is measured in metres)"),
+    (r"assume_unit(='?\w+'?)?", "the file-units setting"),
+    (r"\bprint_mm\b", "the print-size setting"),
+    # engine reject phrasings, translated whole BEFORE the generic word
+    # substitutions below would render them clumsy ("surface detail faces")
+    (r"contains no triangle faces", "has no printable 3D surface in it"),
+    (r"is not a triangle mesh", "is not a 3D model we can read"),
+    (r"\(?`?--[a-z][\w-]*`?\)?", "the matching option"),
+    (r"[A-Za-z]:[\\/][^\s)\"'`]+", "(your download package)"),
+    (r"(/tmp|/home)/[^\s)\"'`]*", "(your download package)"),
+    (r"mesh editor", "3D repair program"),
+    (r"\bmesh(es)?\b", "model"),
+    (r"hausdorff", "direct distance measurement"),
+    (r"\(genus\s*>\s*0\)\.?", "."),
+    (r"\bgenus\b", "tunnel count"),
+    (r"\bwatertight\b", "fully sealed"),
+    (r"\bmanifold\b", "sealed"),
+    (r"face normals|\bnormals?\b", "surface direction"),
+    (r"overhang/support-risk", "steep and will need scaffolding"),
+    (r"\boverhangs?\b", "steep areas"),
+    (r"single extrusion", "single printer line"),
+    (r"\bextrusions?\b", "printer line"),
+    (r"\bvoxel\w*", "3D grid"),
+    (r"\binfill\b", "inner filling"),
+    (r"\bbrim\b( or raft)?|\braft\b", "wider, stickier first layer"),
+    (r"bounding box|\bbbox\b", "overall size"),
+    (r"tessellat\w+|triangulat\w+|\btriangles?\b|\bvertex\b|\bvertices\b",
+     "surface detail"),
+    (r"\bdegenerate\w*", "broken"),
+    (r"self.intersect\w*", "surfaces passing through each other"),
+    (r"\bdecimat\w+", "simplified"),
+    (r"shape.diameter( function)?|\bsdf\b", "thickness measurement"),
+    (r"\bheuristics?\b", "rule of thumb"),
+    (r"\bremesh\w*|\bretopo\w*", "surface rebuild"),
+    (r"\bboolean\b", "merge"),
+    (r"topolog\w+", "shape structure"),
+    (r"\bslicer\b", "print software"),
+    (r"\bsimulation\b", "software check"),
+    (r"blocking issues", "must-fix problems"),   # plural first: keeps grammar
+    (r"blocking issue(s)?", "must-fix problem"),
+    (r"\bpipeline\b", "process"),
+    (r"\bstages?\b", "step"),
+    (r"\btriage\b", "quick check"),
+    (r"\bre-check\w*", "second check"),
+    (r"\bprovenance\b", "where each number comes from"),
+    (r"\bguaranteed\b", "expected"),
+    (r"\bcertified\b", "verified"),
+    (r"\bfoolproof\b|\boptimal\b|\bperfect\b", "good"),
+]
+_RV_PLAIN_SUBS_CS = [                    # case-sensitive verdict/process tokens
+    (r"\bFDM\b", "standard filament printing"),
+    (r"\bSLA\b", "resin printing"),
+    (r"\bPLA\b", "standard plastic"),
+    (r"\bFAIL\b", "not printable yet"),
+    (r"\bPASS\b", "printable"),
+]
+
+
+def _rv_plain_text(t):
+    """Translate an engine-facing string into shop-window words. Numbers and
+    meaning survive; jargon does not. Never raises."""
+    try:
+        s = str(t or "")
+        for pat, rep in _RV_PLAIN_SUBS:
+            s = re.sub(pat, rep, s, flags=re.I)
+        for pat, rep in _RV_PLAIN_SUBS_CS:
+            s = re.sub(pat, rep, s)
+        s = re.sub(r"\s+", " ", s).strip()
+        s = re.sub(r"\s+([.,;:!?])", r"\1", s)
+        return s
+    except Exception:
+        return str(t or "")
+
+
+# --- topic classifier: known findings render as CANONICAL plain cards ---------
+def _rv_card_topic(fact_lower):
+    """Map a raw finding string to a canonical card topic (or None)."""
+    fl = fact_lower
+    if "zero-thickness" in fl or "zero thickness" in fl:
+        return None                      # already plain (pipeline rewrite)
+    if "thinnest wall" in fl or ("thin" in fl and
+                                 ("wall" in fl or "nozzle" in fl
+                                  or "extrusion" in fl)):
+        return "thin"
+    if ("overhang" in fl or "support-risk" in fl or "support material" in fl
+            or "scaffolding" in fl):
+        return "supports"
+    if "watertight" in fl or "open holes" in fl or "fully seal" in fl \
+            or "open boundaries" in fl:
+        return "sealed"
+    if "tunnel/handle" in fl or "genus" in fl or "handles" in fl:
+        return "tunnels"
+    if "winding" in fl or "point inward" in fl or "inside-out" in fl \
+            or "face wrong way" in fl:
+        return "inside_out"
+    return None
+
+
+# numberless one-liners for restating a residual problem (so the same decimal
+# never repeats across banner / receipt / download sections)
+_RV_TOPIC_SHORT = {
+    "thin": "some parts are still thinner than the printer can draw",
+    "supports": "large steep areas will need scaffolding",
+    "sealed": "the shape still isn't fully sealed",
+    "tunnels": "the shape has unexpected tunnels through it",
+    "inside_out": "parts of the surface still face the wrong way",
+}
+
+
+def _rv_thin_card(f):
+    """Canonical thin-wall blocking card (numbers from the measured fields)."""
+    thin, pmin = f.get("thin_wall_min_mm"), f.get("printable_min_mm")
+    if thin is None or pmin is None:
+        return None
+    if thin <= 0:
+        return {"severity": "blocking",
+                "fact_plain": "Some walls have zero thickness — there is no "
+                              "material there at all.",
+                "consequence_plain": "They would print as gaps no matter the "
+                                     "size — making the model bigger will NOT "
+                                     "fix a zero-thickness wall.",
+                "action_plain": "Regenerate the model with a solid/printable "
+                                "option, or ask the print shop to thicken it "
+                                "for you (a small paid job).",
+                "part_name": f.get("part_name"), "topic": "thin",
+                "short_plain": _RV_TOPIC_SHORT["thin"]}
+    if thin >= pmin:
+        return None
+    part = f.get("part_name") or "thinnest part of your model"
+    sf = f.get("scale_factor_suggested")
+    if sf is None:
+        sf = math.ceil((pmin / thin) * 10.0) / 10.0
+        f["scale_factor_suggested"] = sf
+    return {"severity": "blocking",
+            "fact_plain": f"The {part} is {_rv_fmt(thin)} mm thick — thinner "
+                          "than the finest line a standard printer can draw "
+                          f"({_rv_fmt(pmin)} mm).",
+            "consequence_plain": "It may come out with gaps, or snap off in "
+                                 "your hands.",
+            "action_plain": "Either ask the shop to print the whole model "
+                            f"{_rv_fmt(sf, 1)}× bigger, or accept that this "
+                            "part will be fragile — your call. (A resin "
+                            "print handles fine detail; the shop note below "
+                            "mentions it.)",
+            "part_name": part, "topic": "thin",
+            "short_plain": _RV_TOPIC_SHORT["thin"]}
+
+
+def _rv_supports_card(f):
+    """Canonical scaffolding info card (the ONLY supports % on the page body
+    besides the pictures pair)."""
+    sup = f.get("support_pct_oriented")
+    if sup is None or sup < 0.5:
+        return None            # "about 0% needs scaffolding" is just noise
+    zone = str(f.get("support_zone_plain") or "on the underside")
+    # upstream zone strings may carry their own "mostly ..." — never render
+    # "mostly mostly on the underside"
+    zone = re.sub(r"^\s*mostly\s+", "", zone, flags=re.I)
+    where = "" if "no meaningful" in zone.lower() else f", mostly {zone}"
+    return {"severity": "info",
+            "fact_plain": f"About {_rv_fmt(sup, 0)}% of the surface will need "
+                          f"temporary scaffolding{where}.",
+            "consequence_plain": "Small rough patches where the scaffolding "
+                                 "touched — the red zones in the picture "
+                                 "above.",
+            "action_plain": "Nothing; the shop handles this. Just don't "
+                            "expect those spots to be glass-smooth.",
+            "part_name": None, "topic": "supports",
+            "short_plain": _RV_TOPIC_SHORT["supports"]}
+
+
+def _rv_canonical_card(topic, sev, fact, consequence, action, f):
+    """Replace a known raw finding with its canonical plain card. Falls back
+    to the scrubbed original text when the measured fields are missing."""
+    if topic == "thin":
+        c = _rv_thin_card(f)
+        if c:
+            c["severity"] = "blocking" if sev == "blocking" else c["severity"]
+            return c
+    elif topic == "supports":
+        c = _rv_supports_card(f)
+        if c:
+            return c
+    elif topic == "sealed":
+        act = _rv_plain_text(action) or (
+            "Ask your print shop — sealing a shape is a routine repair.")
+        return {"severity": sev,
+                "fact_plain": "The shape isn't fully sealed — its surface "
+                              "has open gaps.",
+                "consequence_plain": "Printers need a sealed shape to tell "
+                                     "inside from outside; gaps can produce "
+                                     "a broken or hollow print.",
+                "action_plain": act, "part_name": None, "topic": "sealed",
+                "short_plain": _RV_TOPIC_SHORT["sealed"]}
+    elif topic == "tunnels":
+        return {"severity": "info",
+                "fact_plain": "The shape has hidden tunnels or handles "
+                              "running through it (like the hole through a "
+                              "mug handle).",
+                "consequence_plain": "These often come with the file rather "
+                                     "than being designed on purpose; they "
+                                     "usually print fine.",
+                "action_plain": "Look at the pictures — if the shape looks "
+                                "right to you, there is nothing to do.",
+                "part_name": None, "topic": "tunnels",
+                "short_plain": _RV_TOPIC_SHORT["tunnels"]}
+    elif topic == "inside_out":
+        act = _rv_plain_text(action) or (
+            "The automatic fix turns these right-side out.")
+        return {"severity": sev,
+                "fact_plain": "Parts of the surface face the wrong way "
+                              "(inside-out).",
+                "consequence_plain": "The printer can misjudge what is solid "
+                                     "and what is empty space.",
+                "action_plain": act, "part_name": None, "topic": "inside_out",
+                "short_plain": _RV_TOPIC_SHORT["inside_out"]}
+    # unknown topic: scrub every string, keep the meaning
+    return {"severity": sev,
+            "fact_plain": _rv_plain_text(fact),
+            "consequence_plain": _rv_plain_text(consequence)
+            or "It may affect how the print comes out.",
+            "action_plain": _rv_plain_text(action)
+            or "Ask your print shop — they handle this routinely.",
+            "part_name": None, "topic": None, "short_plain": None}
+
+
+# --- field extraction: flat spec keys first, then derived from the pipeline --
+def _rv_get(result, key, default=None):
+    rv = result.get("review")
+    if isinstance(rv, dict) and key in rv:
+        return rv[key]
+    if key in result:
+        return result[key]
+    return default
+
+
+_RV_SEV_MAP = {"fail": "blocking", "warn": "check", "info": "info",
+               "blocking": "blocking", "check": "check"}
+_RV_SEV_RANK = {"blocking": 0, "check": 1, "info": 2}
+
+
+def _rv_warnings(result, f):
+    """Normalise / synthesise the ranked warning cards. Every card gets a
+    non-empty action; every raw engine string is either replaced by its
+    CANONICAL plain card (known topics) or scrubbed of jargon. Never raises."""
+    cards = []
+    seen_topics = set()
+
+    def _take(sev, fact, consequence, action, part=None):
+        fact = str(fact or "").strip()
+        if not fact:
+            return
+        topic = _rv_card_topic(fact.lower())
+        if topic in seen_topics:
+            return                        # one card per topic, first wins
+        c = _rv_canonical_card(topic, sev, fact, consequence, action, f)
+        if c is None:
+            return
+        if topic is None and part:
+            c["part_name"] = part
+        if c.get("topic"):
+            seen_topics.add(c["topic"])
+        cards.append(c)
+
+    raw = _rv_get(result, "warnings")
+    if isinstance(raw, list):
+        for w in raw:
+            if not isinstance(w, dict):
+                continue
+            _take(_RV_SEV_MAP.get(str(w.get("severity", "info")).lower(),
+                                  "info"),
+                  w.get("fact_plain") or w.get("fact"),
+                  w.get("consequence_plain") or w.get("consequence"),
+                  w.get("action_plain") or w.get("action"),
+                  w.get("part_name"))
+    else:
+        # graceful fallback: map the cert's ranked issues
+        cert = result.get("cert") or {}
+        for i in cert.get("issues") or []:
+            if not isinstance(i, dict):
+                continue
+            _take(_RV_SEV_MAP.get(str(i.get("sev", "INFO")).lower(), "info"),
+                  i.get("title"), i.get("detail"), i.get("fix"))
+
+    joined = " ".join(c["fact_plain"].lower() for c in cards)
+
+    # --- standard detection: thin walls (blocking) ---------------------------
+    if "thin" not in seen_topics and "thin" not in joined:
+        c = _rv_thin_card(f)
+        if c:
+            cards.append(c)
+            seen_topics.add("thin")
+
+    # --- standard detection: multi-piece (check) ------------------------------
+    ncomp = f.get("components_count")
+    if isinstance(ncomp, int) and ncomp > 1 and "pieces" not in joined:
+        cards.append({
+            "severity": "check",
+            "fact_plain": f"Your model is made of {ncomp} separate pieces. "
+                          "Sometimes that's on purpose (a character holding a "
+                          "separate sword); sometimes it means the file is "
+                          "shattered.",
+            "consequence_plain": "Shattered pieces can print as loose "
+                                 "fragments.",
+            "action_plain": "Look at the 'after' picture above — if the model "
+                            "looks whole and solid, you're fine; if bits are "
+                            "floating apart, re-export the model and upload "
+                            "again.",
+            "part_name": None, "topic": "pieces",
+            "short_plain": "the model is split into separate pieces",
+        })
+
+    # --- standard detection: supports (info) ----------------------------------
+    if "supports" not in seen_topics and "scaffolding" not in joined:
+        c = _rv_supports_card(f)
+        if c:
+            cards.append(c)
+            seen_topics.add("supports")
+
+    cards.sort(key=lambda c: _RV_SEV_RANK.get(c["severity"], 3))
+    return cards
+
+
+def _rv_fields(result):
+    """Normalise a prep() result (or a flat spec-shaped dict) into the review
+    field set. Missing data -> None (sections omit themselves). Never raises."""
+    if not isinstance(result, dict):
+        result = {}
+    facts = result.get("facts") or {}
+    fix = result.get("fix") if isinstance(result.get("fix"), dict) else {}
+    dcert = fix.get("deviation_certificate") or {}
+    gate = result.get("gate") if isinstance(result.get("gate"), dict) else {}
+    ch = result.get("channels") or {}
+    pr = ch.get("printability") if isinstance(ch.get("printability"), dict) else {}
+    orient = ch.get("orientation") if isinstance(ch.get("orientation"), dict) else {}
+    ish = (result.get("internal_shells")
+           if isinstance(result.get("internal_shells"), dict)
+           else (fix.get("internal_shells") or {}))
+    files = result.get("files") or {}
+
+    f = {}
+    f["fix_ran"] = bool(_rv_get(result, "fix_ran", bool(fix)))
+    f["surface_kept_pct"] = _rv_num(_rv_get(result, "surface_kept_pct",
+                                            dcert.get("surface_unchanged_pct")))
+    f["max_deviation_mm"] = _rv_num(_rv_get(result, "max_deviation_mm",
+                                            dcert.get("max_deviation_mm")))
+    f["deviation_anchor"] = (_rv_get(result, "deviation_anchor")
+                             or _rv_dev_anchor(f["max_deviation_mm"]))
+    hc = _rv_get(result, "holes_filled_count")
+    f["holes_filled_count"] = int(hc) if isinstance(hc, (int, float)) else None
+
+    # cavities
+    nc = _rv_get(result, "cavities_count", ish.get("n_internal_shells"))
+    f["cavities_count"] = int(nc) if isinstance(nc, (int, float)) else 0
+    ms = _rv_get(result, "material_savings_pct")
+    if ms is None and _rv_num(ish.get("solid_volume_ratio")) is not None:
+        ms = float(ish["solid_volume_ratio"]) * 100.0
+    f["material_savings_pct"] = _rv_num(ms)
+
+    # dimensions
+    bbox = _rv_get(result, "bbox_mm", facts.get("bbox_mm"))
+    ext = [_rv_num(_rv_get(result, "extents_x_mm")),
+           _rv_num(_rv_get(result, "extents_y_mm")),
+           _rv_num(_rv_get(result, "extents_z_mm"))]
+    if any(e is None for e in ext) and isinstance(bbox, (list, tuple)) \
+            and len(bbox) == 3:
+        ext = [_rv_num(b) for b in bbox]
+    f["extents_mm"] = ext if all(e is not None for e in ext) else None
+    if f["extents_mm"]:
+        f["longest_dim_mm"] = _rv_num(_rv_get(result, "longest_dim_mm",
+                                              max(f["extents_mm"])))
+        f["min_extent_mm"] = _rv_num(_rv_get(result, "min_extent_mm",
+                                             min(f["extents_mm"])))
+    else:
+        f["longest_dim_mm"] = _rv_num(_rv_get(result, "longest_dim_mm"))
+        f["min_extent_mm"] = _rv_num(_rv_get(result, "min_extent_mm"))
+    fo = _rv_get(result, "flat_object")
+    if fo is None and f["longest_dim_mm"] and f["min_extent_mm"] is not None:
+        fo = (f["min_extent_mm"] < 2.0
+              and f["longest_dim_mm"] / max(f["min_extent_mm"], 1e-9) > 15.0)
+    f["flat_object"] = bool(fo)
+    sa = (_rv_get(result, "size_anchor")
+          or _rv_size_anchor(f["longest_dim_mm"]))
+    # upstream anchors may already start with "about ..." while the size
+    # sentence supplies its own "about" — strip it so the page never reads
+    # "about about the size of an egg"
+    f["size_anchor"] = re.sub(r"^\s*about\s+", "", str(sa), flags=re.I)
+
+    us = _rv_get(result, "units_source")
+    if us not in ("file", "assumed_mm", "user_target"):
+        us = "user_target" if result.get("print_mm") else "assumed_mm"
+    f["units_source"] = us
+    f["user_target_size_mm"] = _rv_num(_rv_get(result, "user_target_size_mm",
+                                               result.get("print_mm")))
+
+    # renders: whatever the caller supplies is SANITISED here — a local image
+    # file becomes an embedded data URI (works in the browser and in the
+    # downloaded review.md); a server path that can't be embedded is dropped
+    # rather than rendered as a dead, leaky link.
+    f["render_before"] = _rv_render_uri(_rv_get(result, "render_before"))
+    f["render_after"] = _rv_render_uri(_rv_get(result, "render_after"))
+    f["render_support"] = _rv_render_uri(_rv_get(result, "render_support"))
+
+    # orientation / supports
+    spo = _rv_get(result, "support_pct_original")
+    spn = _rv_get(result, "support_pct_oriented")
+    if spn is None and _rv_num(orient.get("support_area_frac")) is not None:
+        spn = float(orient["support_area_frac"]) * 100.0
+    if spo is None and _rv_num(orient.get("support_area_frac_as_loaded")) is not None:
+        spo = float(orient["support_area_frac_as_loaded"]) * 100.0
+    f["support_pct_original"] = _rv_num(spo)
+    f["support_pct_oriented"] = _rv_num(spn)
+    oa = _rv_get(result, "orientation_applied")
+    if oa is None:
+        oa = (f["support_pct_original"] is not None
+              and f["support_pct_oriented"] is not None)
+    f["orientation_applied"] = bool(oa)
+    f["support_zone_plain"] = _rv_get(result, "support_zone_plain")
+
+    # thin walls
+    f["thin_wall_min_mm"] = _rv_num(_rv_get(result, "thin_wall_min_mm",
+                                            pr.get("min_wall_mm")))
+    f["printable_min_mm"] = _rv_num(_rv_get(result, "printable_min_mm",
+                                            result.get("nozzle_mm") or 0.4))
+    sf = _rv_num(_rv_get(result, "scale_factor_suggested"))
+    if f["thin_wall_min_mm"] is not None and f["thin_wall_min_mm"] <= 0:
+        sf = None            # HARD RULE: never suggest scaling a zero wall
+    f["scale_factor_suggested"] = sf
+    f["part_name"] = _rv_get(result, "part_name")
+
+    cc = _rv_get(result, "components_count")
+    f["components_count"] = int(cc) if isinstance(cc, (int, float)) else None
+
+    wt = _rv_get(result, "watertight_after")
+    if wt is None:
+        wt = dcert.get("watertight")
+    if wt is None:
+        wt = facts.get("watertight")
+    f["watertight_after"] = bool(wt) if wt is not None else None
+    nrm = _rv_get(result, "normals_consistent", facts.get("winding_consistent"))
+    f["normals_consistent"] = bool(nrm) if nrm is not None else None
+
+    # output file
+    ofn = _rv_get(result, "output_filename")
+    stl = files.get("fixed_stl") or files.get("prepped_stl")
+    if not ofn and stl:
+        ofn = os.path.basename(str(stl))
+    f["output_filename"] = ofn
+    f["output_format"] = _rv_get(result, "output_format", "binary STL")
+    mb = _rv_num(_rv_get(result, "output_size_mb"))
+    if mb is None and stl:
+        try:
+            mb = os.path.getsize(str(stl)) / (1024.0 * 1024.0)
+        except OSError:
+            mb = None
+    f["output_size_mb"] = mb
+    f["process_suggestion"] = _rv_get(result, "process_suggestion",
+                                      "FDM, PLA, 0.4 mm nozzle")
+    f["known_risks_shop_phrasing"] = _rv_get(result, "known_risks_shop_phrasing")
+
+    # warp (opt-in; only spec-shaped input renders a result)
+    w = _rv_get(result, "warp")
+    if not isinstance(w, dict):
+        w = {}
+    f["warp"] = {
+        "ran": bool(w.get("ran")),
+        "hotspot_plain": w.get("hotspot_plain"),
+        "ratio_vs_rest": _rv_num(w.get("ratio_vs_rest")),
+        "suggested_shop_phrase": w.get("suggested_shop_phrase"),
+    }
+    if f["warp"]["ran"] and (f["warp"]["hotspot_plain"] is None
+                             or f["warp"]["ratio_vs_rest"] is None):
+        f["warp"]["ran"] = False       # incomplete data: treat as not run
+
+    du = _rv_get(result, "decimation_used")
+    f["decimation_used"] = bool(du)
+    f["tri_count_original"] = _rv_get(result, "tri_count_original")
+    f["tri_count_analysis"] = _rv_get(result, "tri_count_analysis")
+    # only a real web URL may render as a hyperlink; a server-local path (or
+    # bare filename) is mentioned in words instead — never a dead/leaky link
+    turl = _rv_get(result, "technical_report_url", "report.md")
+    f["technical_report_url"] = (turl if isinstance(turl, str)
+                                 and turl.startswith(("http://", "https://"))
+                                 else None)
+    sw = _rv_get(result, "source_watertight")
+    f["source_watertight"] = bool(sw) if sw is not None else None
+
+    # --- trust-line DISPLAY strings (shared by the receipt and the shop echo).
+    # Rounding may only DOWNGRADE the claim: if anything was repaired, the page
+    # never shows "100% ... exactly as uploaded" or "0 mm" — a rounded-up 100%
+    # next to "we sealed N gaps" reads as a contradiction (claim upgrade).
+    kept, dev = f["surface_kept_pct"], f["max_deviation_mm"]
+    hc0 = f["holes_filled_count"]
+    changed = bool(f["fix_ran"] and ((isinstance(hc0, int) and hc0 > 0)
+                                     or (dev is not None and dev > 0)
+                                     or (kept is not None and kept < 100.0)))
+    f["repairs_made"] = changed
+    kept_s = _rv_fmt(kept, 1) if kept is not None else None
+    if changed and kept_s == "100":
+        kept_s = "99.9"                     # display floor, never a claim up
+    dev_s = None
+    if dev is not None:
+        if changed and dev < 0.001:
+            dev_s = "0.001"                 # ceiling display: 0 <= 0.001 holds
+            f["deviation_anchor"] = "too small for us to measure"
+        else:
+            dev_s = _rv_fmt(math.ceil(float(dev) * 1000.0) / 1000.0, 3)
+    f["kept_s"], f["dev_s"] = kept_s, dev_s
+
+    # verdict (three states; blocking cards force not_ready; refusal wins)
+    if result.get("rejected"):
+        verdict = "unreadable"
+    else:
+        raw = str(_rv_get(result, "verdict", "")).strip()
+        low = raw.lower()
+        if low in ("ready", "not_ready", "unreadable"):
+            verdict = low
+        else:
+            eff = str(fix.get("after_verdict") or gate.get("verdict")
+                      or raw).upper()
+            if eff in ("PASS", "WARN"):
+                verdict = "ready"
+            elif eff == "FAIL":
+                verdict = "not_ready"
+            else:
+                verdict = "unreadable" if not facts else "not_ready"
+    f["verdict"] = verdict
+
+    f["warnings"] = _rv_warnings(result, f) if verdict != "unreadable" else []
+    f["blocking_count"] = sum(1 for c in f["warnings"]
+                              if c["severity"] == "blocking")
+    if f["verdict"] == "ready" and f["blocking_count"] > 0:
+        f["verdict"] = "not_ready"     # never a green banner over a blocker
+
+    # top issue: the CLASSIFIED blocking card is authoritative (already plain,
+    # numbers appear exactly once more in its own card); a caller-supplied
+    # string is a scrubbed fallback only.
+    blk = next((c for c in f["warnings"] if c["severity"] == "blocking"), None)
+    top = blk["fact_plain"] if blk else None
+    if not top:
+        raw_top = _rv_get(result, "top_issue_plain")
+        top = _rv_plain_text(raw_top) if raw_top else None
+    f["top_issue_plain"] = top or ("One part of your model needs a decision "
+                                   "before printing.")
+    # residual restatements are NUMBERLESS one-liners so the same decimal
+    # never repeats across the banner, the receipt and the download button
+    short = (blk or {}).get("short_plain")
+    if not short:
+        raw_res = str(_rv_get(result, "residual_issue_plain") or "")
+        raw_res = re.sub(r"^\s*even after the automatic fix:\s*", "",
+                         raw_res, flags=re.I)
+        short = re.sub(r"\s*\d+(\.\d+)?\s*(mm|%|×|x)?\s*", " ",
+                       _rv_plain_text(raw_res)).strip(" .,;—-") or None
+    f["residual_short"] = short or "one problem that needs your decision"
+    f["residual_issue_plain"] = f["residual_short"]
+    return f
+
+
+# --- section renderers --------------------------------------------------------
+def _rv_banner(f):
+    v = f["verdict"]
+    if v == "ready":
+        hc = f.get("holes_filled_count")
+        mid = (f"We sealed {hc} small gap{'s' if hc != 1 else ''}; everything "
+               "else is exactly as you uploaded it."
+               if isinstance(hc, int) and hc > 0 else
+               "We didn't need to change anything — your file was already "
+               "sound.")
+        return ["> ✅ **READY TO PRINT** — Good news: your model is ready.",
+                f"> {mid}",
+                "> Your print-ready file is at the bottom of this page.", ""]
+    if v == "not_ready":
+        n = f["blocking_count"]
+        need = ("one thing needs your decision." if n <= 1
+                else f"{n} things need your decision.")
+        did = ("We repaired everything we safely could — your receipt is in "
+               "the next section — but this one is a choice only you can "
+               "make. See item 1 below for your options." if f["fix_ran"] else
+               "We checked everything and changed nothing — this one is a "
+               "choice only you can make. See item 1 below for your options.")
+        return [f"> ⚠️ **NOT READY YET** — {need}",
+                f"> {f['top_issue_plain']}",
+                f"> {did}", ""]
+    return ["> ❌ **WE COULDN'T READ THIS FILE** — so we changed nothing, and "
+            "there is no fixed file to download.",
+            "> This usually means the export went wrong, not that your model "
+            "is bad.",
+            "> One thing to try: re-export from Meshy as .glb or .stl (the "
+            "file formats print shops use) and upload it again.", ""]
+
+
+def _rv_changed(f):
+    lines = ["## What we changed — and what we didn't", ""]
+    if f["fix_ran"] and f.get("kept_s") is not None \
+            and f.get("dev_s") is not None and f.get("repairs_made"):
+        kept_s, dev_s = f["kept_s"], f["dev_s"]
+        lines.append(
+            f"**{kept_s}% of your surface is exactly as you uploaded it.** "
+            "Where we made repairs, the new surface is never more than "
+            f"**{dev_s} mm** from your original — {f['deviation_anchor']}.")
+        lines.append("")
+        hc = f.get("holes_filled_count")
+        if isinstance(hc, int) and hc > 0:
+            one = hc == 1
+            gap_line = (f"Your model had {hc} small gap{'' if one else 's'} "
+                        "in its surface — like "
+                        + ("a pinhole" if one else "pinholes")
+                        + " in a balloon. Printers need a fully sealed "
+                          "shape, so we sealed "
+                        + ("it." if one else "them."))
+            if f.get("source_watertight") is True:
+                gap_line += (" (The gaps appeared in the simplified working "
+                             "copy we analyse — your original file was "
+                             "already fully sealed.)")
+            lines.append(gap_line)
+        lines.append("What we did **not** do: no smoothing, no reshaping, no "
+                     "detail reduction, no rescaling beyond the size you "
+                     "chose. The overall shape and details are unchanged — "
+                     "we verify this by measuring, not by eye.")
+        lines.append("")
+    else:
+        tail = (" — it was already fully sealed."
+                if f.get("watertight_after") is not False else ".")
+        lines.append("We didn't change your model at all: **100% of your "
+                     "surface is exactly as you uploaded it (0 mm "
+                     "deviation)**" + tail)
+        lines.append("")
+    if f["cavities_count"] > 0:
+        n = f["cavities_count"]
+        many = n > 1
+        them = "them" if many else "it"
+        sav = ""
+        if f["material_savings_pct"] is not None:
+            sav = (" and uses roughly "
+                   f"{_rv_fmt(f['material_savings_pct'], 0)}% of the material "
+                   "a fill-everything repair would (a geometric estimate, "
+                   "not a print-shop quote)")
+        lines.append(
+            f"Your model has **{n} hollow space{'s' if many else ''} inside. "
+            f"We kept {them} hollow instead of filling {them} solid** — that "
+            f"keeps the print faithful to your design{sav}.")
+        lines.append("")
+    if f["fix_ran"] and f["verdict"] == "not_ready":
+        did = ("the repair sealed the gaps but" if f.get("repairs_made")
+               else "the automatic check ran, but it")
+        lines.append(
+            f"One honest note: {did} did **NOT** fix everything: "
+            f"{f['residual_short']}. That needs a decision from you "
+            "(see item 1 below) — we don't change your model's shape "
+            "automatically.")
+        lines.append("")
+    lines.append("Your original upload is never modified; everything we "
+                 "produce is a new file.")
+    lines.append("")
+    return lines
+
+
+def _rv_size(f):
+    if not f["extents_mm"] or f["longest_dim_mm"] is None:
+        return []
+    x_s, y_s, z_s = (_rv_fmt(v, 1) for v in f["extents_mm"])
+    L_s = _rv_fmt(f["longest_dim_mm"], 1)
+    lines = ["## Size check — is this the size you meant?", "",
+             f"Your model will print **{L_s} mm** at its longest — about "
+             f"{f['size_anchor']}.",
+             f"Full size: **{x_s} × {y_s} × {z_s} mm** (all measurements in "
+             "millimetres).", ""]
+    if f["units_source"] == "assumed_mm":
+        lines += ["Heads-up: your file didn't say what units it uses (most "
+                  "AI-generated files don't), so we assumed millimetres — "
+                  "the safe, standard guess.", ""]
+    elif f["units_source"] == "user_target":
+        lines += ["We scaled it so its longest side matches the size you "
+                  "picked on the upload screen.", ""]
+    if f["flat_object"] and f["min_extent_mm"] is not None:
+        lines += [f"Note the {_rv_fmt(f['min_extent_mm'], 1)} mm thickness: "
+                  "this model is nearly flat, like a cardboard cutout. If you "
+                  "expected a full 3D object, look at the pictures below "
+                  "before paying for a print.", ""]
+    lines += [f"If \"{f['size_anchor']}\" sounds wrong, don't worry — nothing "
+              "is broken, and every warning below depends on the size, so fix "
+              "this FIRST. One thing to do: tell the print shop the real size "
+              "you want (for example \"make it 15 cm tall\") — resizing is "
+              "normal, safe, and takes them seconds.", ""]
+    return lines
+
+
+def _rv_pictures(f):
+    rb, ra, rs = f["render_before"], f["render_after"], f["render_support"]
+    lines = ["## See it — before and after (pictures)", ""]
+    if rb and ra:
+        imgs = f"![before]({rb}) ![after]({ra})"
+        if rs:
+            imgs += f" ![support zones]({rs})"
+        lines += [imgs, ""]
+        pos = (", shown in the printing position we've already applied"
+               if f["orientation_applied"] else "")
+        ident = ("They should look identical — the repairs are smaller than "
+                 "your screen can show (the receipt above is the measurement "
+                 "behind that)." if f.get("repairs_made") else
+                 "They should look identical — we didn't change anything.")
+        lines += [f"**Left:** exactly what you uploaded. **Right:** the file "
+                  f"you'll print{pos}. {ident}", ""]
+        if rs:
+            lines += ["**Third picture:** the red areas are where the "
+                      "printer will build temporary scaffolding to hold up "
+                      "steep parts while printing. The scaffolding is "
+                      "removed afterwards but can leave small rough patches "
+                      "in those red spots — don't expect them to be "
+                      "glass-smooth.", ""]
+    else:
+        # never a broken image or a server path: say plainly there are none
+        lines += ["We couldn't produce pictures for this file — every "
+                  "measurement above still stands; it's only the preview "
+                  "images that are missing.", ""]
+    if f["orientation_applied"] and f["support_pct_original"] is not None \
+            and f["support_pct_oriented"] is not None:
+        lines += ["We already rotated the model to the position that needs "
+                  "the least scaffolding — from "
+                  f"{_rv_fmt(f['support_pct_original'], 0)}% of the surface "
+                  f"down to {_rv_fmt(f['support_pct_oriented'], 0)}% "
+                  "(estimated with the standard 45° steepness rule of thumb, "
+                  "not a run through real printer software). That rotation is "
+                  "saved into your download.", ""]
+    return lines
+
+
+_RV_SEV_TAG = {"blocking": "(needs your decision)", "check": "(please check)",
+               "info": "(good to know)"}
+
+
+def _rv_warn_section(f):
+    lines = ["## Things to know before you print (most important first)", ""]
+    if not f["warnings"]:
+        lines += ["Good news: nothing you need to worry about — we found no "
+                  "problems worth flagging.", ""]
+        return lines
+    for i, c in enumerate(f["warnings"], 1):
+        tag = _RV_SEV_TAG.get(c["severity"], "(good to know)")
+        lines.append(f"**{i}. {tag} {c['fact_plain']}**")
+        lines.append(f"*What this means for your print:* "
+                     f"{c['consequence_plain']}")
+        lines.append(f"*Do one thing:* {c['action_plain']}")
+        lines.append("")
+    return lines
+
+
+def _rv_shop(f):
+    lines = ["## Your file + a note for the print shop", ""]
+    name = f["output_filename"] or "your file"
+    mb_s = (f" ({_rv_fmt(f['output_size_mb'], 1)} MB)"
+            if f["output_size_mb"] is not None else "")
+    label = ("print-ready file" if f["verdict"] == "ready"
+             else "repaired file")
+    lines += [f"**[ ⬇ Download your {label} — {name}{mb_s} ]**", ""]
+    if f["verdict"] == "not_ready":
+        lines += ["Because the verdict above is \"Not ready yet\", the shop "
+                  "will hit the same problem we found "
+                  f"({f['residual_issue_plain']}) — settle item 1 first, or "
+                  "expect the shop to call you.", ""]
+    lines += ["Send this note along with the file — copy-paste it into the "
+              "order form; you don't need to understand it, the shop does:",
+              "", "```"]
+    lines.append(f"File: {name} — {f['output_format']}, units: millimetres")
+    if f["extents_mm"]:
+        x_s, y_s, z_s = (_rv_fmt(v, 1) for v in f["extents_mm"])
+        lines.append(f"Dimensions: {x_s} × {y_s} × {z_s} mm. Scale is "
+                     "intentional — please print at this size, do not "
+                     "rescale.")
+    if f["watertight_after"] is not None:
+        wt = ("YES — single manifold solid, verified after repair"
+              if f["watertight_after"] else "NO — see known issues")
+        nrm = ("yes" if f["normals_consistent"] else "no") \
+            if f["normals_consistent"] is not None else "unknown"
+        lines.append(f"Watertight: {wt}. Consistent normals: {nrm}.")
+    if f["fix_ran"] and f.get("kept_s") is not None \
+            and f.get("dev_s") is not None and f.get("repairs_made"):
+        kept_s, dev_s = f["kept_s"], f["dev_s"]
+        try:
+            mod_s = _rv_fmt(max(0.0, 100.0 - float(kept_s)), 1)
+        except ValueError:
+            mod_s = "--"
+        hc = f.get("holes_filled_count")
+        if isinstance(hc, int):
+            hole_s = (f"{hc} boundary hole{'' if hc == 1 else 's'} filled"
+                      if hc > 0 else "no boundary holes to fill")
+            if hc > 0 and f.get("source_watertight") is True:
+                hole_s += (" (source file was watertight; holes arose in "
+                           "the simplified analysis copy)")
+        else:
+            hole_s = "boundary holes filled"
+        lines.append(f"Repairs performed: {hole_s}; {kept_s}% of surface "
+                     f"unmodified ({mod_s}% modified), max deviation {dev_s} "
+                     "mm vs. source (two-sided Hausdorff); original detail "
+                     "otherwise untouched.")
+    else:
+        lines.append("Repairs performed: none — 100% of surface unmodified "
+                     "(0% modified), max deviation 0 mm vs. source "
+                     "(two-sided Hausdorff).")
+    if f["cavities_count"] > 0:
+        nc = f["cavities_count"]
+        voids = ("sealed internal voids are" if nc > 1
+                 else "sealed internal void is")
+        lines.append(f"Internal cavities: {nc} {voids} INTENTIONAL — please "
+                     "do NOT run a make-solid / cavity-fill auto-repair.")
+    if f["orientation_applied"]:
+        lines.append("Orientation: file is saved in a support-minimising "
+                     "orientation — please print as-oriented.")
+    lines.append(f"Suggested process: {f['process_suggestion']}")
+    if f["known_risks_shop_phrasing"]:
+        lines.append(f"Known risks: {f['known_risks_shop_phrasing']}")
+    lines.append("Prepared by meshprep — checks are geometric (45° overhang "
+                 "rule, direct thickness measurement), not a slicer "
+                 "simulation.")
+    lines += ["```", "**[ Copy to clipboard ]**", ""]
+    return lines
+
+
+def _rv_warp(f):
+    lines = ["## Optional: will it warp? (takes about a minute)", ""]
+    w = f["warp"]
+    if not w["ran"]:
+        lines += ["**[ Run warp check — about 1 minute ]**",
+                  "This runs a rough physics simulation of your print "
+                  "cooling down. What you'll get back is a **comparison, not "
+                  "a promise**: it ranks which parts of your model are more "
+                  "likely to curl or lift than others. It cannot predict "
+                  "exact millimetres — the numbers are uncalibrated "
+                  "estimates.", ""]
+        return lines
+    ratio = w["ratio_vs_rest"]
+    ratio_s = _rv_fmt(ratio, 1)
+    # the ratio compares the predicted lift to our ATTENTION THRESHOLD (the
+    # level at which we start flagging it) — say exactly that; "0.1× more
+    # likely than the rest" was both confusing and wrong.
+    if isinstance(ratio, (int, float)) and ratio < 1.0:
+        lines += ["**Warp check result (uncalibrated estimate):** good news "
+                  "— the tendency to curl or lift off the print bed came in "
+                  "below the level where we start flagging it, including at "
+                  f"{w['hotspot_plain']}; that is an uncalibrated estimate — "
+                  "a comparison, not a promise.", ""]
+    else:
+        lines += [f"**Warp check result (uncalibrated estimate):** "
+                  f"{w['hotspot_plain']} tends to curl and lift off the "
+                  f"print bed — about **{ratio_s}× the level where we start "
+                  "flagging it** — an uncalibrated estimate, useful for "
+                  "spotting the risky area, not for predicting exact "
+                  "millimetres; trust the comparison, not the raw number.",
+                  ""]
+    if w["suggested_shop_phrase"]:
+        lines += ["If it matters, the one thing to do is tell the shop: "
+                  f"\"{w['suggested_shop_phrase']}\" — they'll know what "
+                  "that means.", ""]
+    return lines
+
+
+def _rv_fine_print(f):
+    lines = ["<details>",
+             "<summary><strong>The fine print</strong> (tap to expand)"
+             "</summary>", ""]
+    if f["verdict"] == "unreadable":
+        lines += ["**How honest are these numbers?** There are none — we "
+                  "couldn't read the file, so we changed nothing and "
+                  "measured nothing.", ""]
+    else:
+        lines.append("**How honest are these numbers?**")
+        if f["fix_ran"]:
+            lines.append("**Measured:** the receipt in \"What we changed\" — "
+                         "the percentage of your surface we kept and the "
+                         "maximum deviation — is computed directly on your "
+                         "repaired file against your original — it is not an "
+                         "estimate.")
+        hollow = (" The hollow-space material figure is a rough geometric "
+                  "estimate." if f["cavities_count"] > 0 else "")
+        lines.append("**Estimates:** wall thickness, scaffolding coverage, "
+                     "and the printing angle come from standard geometry "
+                     "rules of thumb (the 45° steepness rule, direct "
+                     "thickness measurement), not from a run through real "
+                     "printer software — your shop's slicer software (the "
+                     "program that prepares files for their printer) has the "
+                     f"final word.{hollow}")
+        lines.append("**Uncalibrated:** the optional warp number — trust its "
+                     "ranking of risky spots, not its exact values.")
+        if f["units_source"] == "assumed_mm":
+            lines.append("The size check assumed millimetres because your "
+                         "file didn't specify.")
+        if f["decimation_used"] and f["tri_count_original"] \
+                and f["tri_count_analysis"]:
+            lines.append("For speed, we analysed a lightly simplified copy "
+                         f"of your model ({f['tri_count_original']:,} → "
+                         f"{f['tri_count_analysis']:,} facets); the file you "
+                         "download is repaired at full quality.")
+        lines.append("")
+    lines += ["Nothing on this page is a guarantee your print succeeds — it "
+              "is our honest best reading of your file, and we've told you "
+              "plainly where it still needs a decision."]
+    # the full technical report: a real web URL renders as a link; otherwise
+    # it is named in words (report.md rides in the downloads) — NEVER a dead
+    # or server-local link, and never offered at all when nothing was read.
+    if f["verdict"] != "unreadable":
+        url = f.get("technical_report_url")
+        if url:
+            lines.append("Want every raw number, timing, and measurement "
+                         "method? **[ Download the full technical report ]"
+                         f"({url})**")
+        else:
+            lines.append("Want every raw number, timing, and measurement "
+                         "method? The full technical report (report.md) is "
+                         "included with your downloads.")
+    lines += ["", "</details>", ""]
+    return lines
+
+
+def build_review(result, audience="novice") -> str:
+    """PrepResult (or flat spec-shaped dict) -> the Space review page
+    (markdown, UTF-8). Never raises. `audience` is fixed to 'novice' for now
+    (reserved for a future expert view); any value renders the novice page."""
+    try:
+        f = _rv_fields(result)
+        lines = _rv_banner(f)
+        lines.append("---")
+        lines.append("")
+        if f["verdict"] != "unreadable":
+            for sec in (_rv_changed, _rv_size, _rv_pictures, _rv_warn_section,
+                        _rv_shop, _rv_warp):
+                try:
+                    lines += sec(f)
+                except Exception as e:      # a broken section degrades quietly
+                    lines += [f"_(section unavailable: {type(e).__name__})_",
+                              ""]
+        lines += _rv_fine_print(f)
+        return "\n".join(lines).rstrip() + "\n"
+    except Exception as e:
+        return ("> ❌ **WE COULDN'T READ THIS FILE** — so we changed nothing, "
+                "and there is no fixed file to download.\n> This usually "
+                "means the export went wrong, not that your model is bad.\n"
+                "> One thing to try: re-export from Meshy as .glb or .stl "
+                "(the file formats print shops use) and upload it again.\n\n"
+                f"<!-- review rendering failed: {type(e).__name__}: {e} -->\n")
+
+
+# --- mechanical acceptance-criteria checker ------------------------------------
+_RV_VERDICT_PHRASES = ("READY TO PRINT", "NOT READY YET",
+                       "WE COULDN'T READ THIS FILE")
+
+_RV_HEADER_ORDER = ["## What we changed", "## Size check", "## See it",
+                    "## Things to know before you print",
+                    "## Your file + a note for the print shop",
+                    "## Optional: will it warp", "The fine print"]
+
+# banned outside the shop block (case-insensitive unless noted)
+_RV_BANNED = [
+    (r"\bmanifold\b", "manifold"), (r"\bwatertight\b", "watertight"),
+    (r"\bgenus\b", "genus"), (r"topolog", "topology"),
+    (r"hausdorff", "Hausdorff"), (r"\bnormals\b", "normals"),
+    (r"\bmesh(es)?\b", "mesh"), (r"\bdecimat", "decimation"),
+    (r"\bvoxel", "voxel"), (r"\bboolean\b", "boolean"),
+    (r"\bremesh|\bretopo", "remesh/retopo"),
+    (r"self.intersect", "self-intersection"), (r"\bdegenerate", "degenerate"),
+    (r"tessellat|triangulat|\btriangles?\b|\bvertex\b|\bvertices\b",
+     "tessellation/triangle/vertex"),
+    (r"bounding box|\bbbox\b", "bounding box"),
+    (r"extrusion", "extrusion"), (r"\binfill\b", "infill"),
+    (r"\boverhang", "overhang"), (r"\bheuristic|shape.diameter|\bsdf\b",
+                                  "heuristic/SDF"),
+    (r"\bprovenance\b", "provenance"),
+    (r"\bguaranteed\b|\bcertified\b", "guaranteed/certified"),
+    (r"\bfoolproof\b|\boptimal\b|\bperfect\b", "foolproof/optimal/perfect"),
+    (r"blocking issue", "blocking issue(s)"),
+    (r"\bpipeline\b|\bstage\b|\btriage\b|\bre-check\b",
+     "pipeline/stage/re-check/triage"),
+]
+_RV_BANNED_CS = [           # case-sensitive tokens
+    (r"\bFDM\b|\bSLA\b|\bPLA\b", "FDM/SLA/PLA"),
+    (r"\bFAIL\b|\bPASS\b", "FAIL/PASS verdict token"),
+]
+
+
+def _rv_find_shop_span(md):
+    for m in re.finditer(r"```(.*?)```", md, re.S):
+        if "units: millimetres" in m.group(1):
+            return m.span()
+    return None
+
+
+def _rv_find_region(md, start_marker, end_markers):
+    i = md.find(start_marker)
+    if i < 0:
+        return None
+    end = len(md)
+    for em in end_markers:
+        j = md.find(em, i + len(start_marker))
+        if 0 <= j < end:
+            end = j
+    return (i, end)
+
+
+def review_selfcheck(md) -> list:
+    """Mechanically test the review page against the spec's acceptance
+    criteria. Returns a list of violation strings (empty = clean).
+    Never raises."""
+    v: list[str] = []
+    try:
+        if not isinstance(md, str) or not md.strip():
+            return ["empty review document"]
+
+        # embedded images are legitimate content, not text: mask their base64
+        # payloads before every textual scan (a random payload can otherwise
+        # spell a banned word or a fake number). The ![tag](...) structure
+        # survives, so the picture checks still see the images.
+        md = re.sub(r"\(data:image/[a-z]+;base64,[^)]*\)",
+                    "(embedded-image)", md)
+
+        # -- 1. banner first; exactly one verdict phrase ----------------------
+        first = next((ln for ln in md.splitlines() if ln.strip()), "")
+        if not first.startswith("> ") or not any(p in first
+                                                 for p in _RV_VERDICT_PHRASES):
+            v.append("banner is not the first rendered element")
+        hits = [(p, md.count(p)) for p in _RV_VERDICT_PHRASES if p in md]
+        if len(hits) != 1:
+            v.append("page must contain exactly one verdict phrase "
+                     f"(found {[p for p, _ in hits]})")
+        elif hits[0][1] != 1:
+            v.append(f"verdict phrase '{hits[0][0]}' appears {hits[0][1]} "
+                     "times (must be once)")
+        unreadable = "WE COULDN'T READ THIS FILE" in md
+        not_ready = "NOT READY YET" in md
+
+        shop_span = _rv_find_shop_span(md)
+        shop_txt = md[shop_span[0]:shop_span[1]] if shop_span else ""
+        masked = (md[:shop_span[0]] + md[shop_span[1]:]) if shop_span else md
+        warp_reg = _rv_find_region(md, "## Optional: will it warp",
+                                   ["<details"])
+        warp_txt = md[warp_reg[0]:warp_reg[1]] if warp_reg else ""
+
+        # -- 2. unreadable: refusal is a refusal ------------------------------
+        if unreadable:
+            if "we changed nothing" not in md:
+                v.append("unreadable banner must say 'we changed nothing'")
+            if md.count("One thing to try:") != 1:
+                v.append("unreadable page must offer exactly one recovery "
+                         "action")
+            if "⬇" in md or shop_span:
+                v.append("unreadable page must not offer a download or shop "
+                         "block")
+            for h in _RV_HEADER_ORDER[:-1]:
+                if h in md:
+                    v.append(f"unreadable page must not render '{h}'")
+        else:
+            # -- 3. section headers present, once each, in order --------------
+            pos = -1
+            for h in _RV_HEADER_ORDER:
+                c = md.count(h)
+                if c == 0:
+                    v.append(f"missing section header '{h}'")
+                    continue
+                if c > 1:
+                    v.append(f"section header '{h}' appears {c} times")
+                p = md.find(h)
+                if p < pos:
+                    v.append(f"section '{h}' out of spec order")
+                pos = p
+
+            # -- 4. trust line + shop echo -------------------------------------
+            kept_s = dev_s = None
+            m = re.search(r"\*\*([\d.]+)% of your surface is exactly as you "
+                          r"uploaded it\.\*\*.{0,200}?never more than "
+                          r"\*\*([\d.]+) mm\*\* from your original — (.{3,})",
+                          md, re.S)
+            if m:
+                kept_s, dev_s = m.group(1), m.group(2)
+            elif "100% of your surface is exactly as you uploaded it (0 mm " \
+                 "deviation)" in md:
+                kept_s, dev_s = "100", "0"
+            else:
+                v.append("Section 2 trust line missing (neither repair form "
+                         "nor 100%/0 mm form found)")
+            if not shop_span:
+                v.append("shop block missing (no fenced block with "
+                         "'units: millimetres')")
+            if kept_s and shop_txt:
+                rep = next((ln for ln in shop_txt.splitlines()
+                            if ln.startswith("Repairs performed:")), "")
+                if not rep:
+                    v.append("shop block missing 'Repairs performed:' line")
+                else:
+                    if f"{kept_s}% of surface" not in rep:
+                        v.append("shop repairs line does not echo the trust "
+                                 f"line's kept % ({kept_s}%)")
+                    if f"{dev_s} mm" not in rep:
+                        v.append("shop repairs line does not echo the trust "
+                                 f"line's max deviation ({dev_s} mm)")
+
+            # -- 5. residual-failure discipline --------------------------------
+            fix_ran = m is not None
+            if not_ready:
+                if "✅" in md or "✔" in md:
+                    v.append("success glyph on a not-ready page")
+                if fix_ran and "did **NOT** fix" not in md:
+                    v.append("fix ran + not ready: mandatory residual-failure "
+                             "sentence missing in Section 2")
+                dl_reg = _rv_find_region(
+                    md, "## Your file + a note for the print shop",
+                    ["## Optional: will it warp"])
+                if dl_reg and "settle item 1 first" not in \
+                        md[dl_reg[0]:dl_reg[1]]:
+                    v.append("not ready: residual issue not restated beside "
+                             "the download button")
+                if re.search(r"print-ready", masked, re.I):
+                    v.append("'print-ready' used on a non-ready page")
+
+            # -- 6. cavities: kept + INTENTIONAL travel together ---------------
+            has_hollow = "hollow space" in masked
+            has_intent = "INTENTIONAL" in shop_txt
+            if has_hollow != has_intent:
+                v.append("cavity statements inconsistent (Section 2 'hollow "
+                         "space' and shop 'INTENTIONAL' must appear "
+                         "together)")
+            if has_intent and "do NOT run a make-solid / cavity-fill" \
+                    not in shop_txt:
+                v.append("shop block cavity line missing the do-NOT-auto-fill "
+                         "instruction")
+
+            # -- 7. material savings always labelled ---------------------------
+            for para in masked.split("\n\n"):
+                if "% of the material" in para and \
+                        "(a geometric estimate" not in para:
+                    v.append("material-savings % rendered without its "
+                             "'(a geometric estimate' label")
+
+            # -- 8/9. size section ----------------------------------------------
+            sz = _rv_find_region(md, "## Size check", ["## See it"])
+            if sz:
+                s = md[sz[0]:sz[1]]
+                if " mm** at its longest — about " not in s:
+                    v.append("size section missing longest-dimension anchor "
+                             "sentence")
+                if not re.search(r"\*\*[\d.]+ × [\d.]+ × [\d.]+ mm\*\*", s):
+                    v.append("size section missing the three explicit mm "
+                             "dimensions")
+                if "(all measurements in millimetres)" not in s:
+                    v.append("size section missing explicit millimetre units")
+                if s.count("One thing to do:") != 1:
+                    v.append("size section must end with exactly one 'One "
+                             "thing to do:' action")
+                if "didn't say what units" in s and \
+                        "assumed millimetres" not in s:
+                    v.append("assumed-units disclosure incomplete")
+
+            # -- 10. renders ------------------------------------------------------
+            pic = _rv_find_region(md, "## See it",
+                                  ["## Things to know before you print"])
+            if pic:
+                p = md[pic[0]:pic[1]]
+                has_imgs = "![" in p
+                if has_imgs:
+                    for tagname in ("![before](", "![after]("):
+                        if tagname not in p:
+                            v.append(f"pictures section missing {tagname}...)"
+                                     " render")
+                    has_support = ("![support zones](" in p
+                                   or "![support](" in p)
+                    if has_support:
+                        if "temporary scaffolding" not in p:
+                            v.append("support-zone caption must gloss "
+                                     "supports as 'temporary scaffolding'")
+                        if "rough patches" not in p:
+                            v.append("support-zone caption must warn about "
+                                     "'rough patches'")
+                elif "couldn't produce pictures" not in p:
+                    v.append("pictures section has neither renders nor the "
+                             "honest no-pictures note")
+                if "down to" in p and not ("rule of thumb" in p
+                                           and "real printer software" in p):
+                    v.append("orientation support pair missing its 45°-rule "
+                             "estimate label")
+
+            # -- 11-15. warning cards ---------------------------------------------
+            wr = _rv_find_region(md, "## Things to know before you print",
+                                 ["## Your file + a note for the print shop"])
+            if wr:
+                w = md[wr[0]:wr[1]]
+                facts_ln = re.findall(
+                    r"^\*\*\d+\. \((needs your decision|please check|"
+                    r"good to know)\) (.+)$", w, re.M)
+                n_mean = w.count("*What this means for your print:*")
+                n_act = w.count("*Do one thing:*")
+                if not (len(facts_ln) == n_mean == n_act):
+                    v.append(f"warning cards malformed: {len(facts_ln)} fact "
+                             f"lines, {n_mean} consequence lines, {n_act} "
+                             "action lines")
+                rank = {"needs your decision": 0, "please check": 1,
+                        "good to know": 2}
+                seq = [rank[t] for t, _ in facts_ln]
+                if seq != sorted(seq):
+                    v.append("warning cards not ordered blocking → check → "
+                             "info")
+                # zero-thickness: no scaling suggestion in ITS action
+                blocks = re.split(r"\n(?=\*\*\d+\. \()", w)
+                for b in blocks:
+                    if "zero thickness" in b:
+                        act = re.search(r"\*Do one thing:\* (.+)", b)
+                        if act and re.search(r"bigger|×|\d+\s*%|scale",
+                                             act.group(1), re.I):
+                            v.append("zero-thickness card suggests scaling "
+                                     "(hard rule violation)")
+                sup_hits = re.findall(r"[\d.]+% of the surface", w)
+                if len(sup_hits) > 1:
+                    v.append("more than one supports percentage in the "
+                             "warnings section")
+
+            # -- 16. orientation strings paired -------------------------------------
+            saved = "saved into your download" in md
+            as_or = "please print as-oriented" in shop_txt
+            if saved != as_or:
+                v.append("orientation strings must appear together ('saved "
+                         "into your download' + shop 'print as-oriented')")
+
+            # -- 17. shop block minimum content --------------------------------------
+            if shop_txt:
+                for req in ("units: millimetres", "do not rescale",
+                            "Watertight: ", "not a slicer simulation"):
+                    if req not in shop_txt:
+                        v.append(f"shop block missing required '{req}'")
+                if "[ Copy to clipboard ]" not in md:
+                    v.append("shop block missing the copy button")
+
+            # -- 18. warp discipline ---------------------------------------------------
+            if warp_txt:
+                ran = "Warp check result" in warp_txt
+                btn = "Run warp check" in warp_txt
+                if ran and btn:
+                    v.append("warp section shows both the button and a "
+                             "result")
+                if ran:
+                    for sent in re.split(r"(?<=[.!?])\s+",
+                                         warp_txt.replace("\n", " ")):
+                        if re.search(r"[\d.]+×", sent) and \
+                                "uncalibrated" not in sent:
+                            v.append("warp ratio not in the same sentence as "
+                                     "'uncalibrated'")
+                if btn and "a **comparison, not a promise**" not in warp_txt \
+                        and "a comparison, not a promise" not in warp_txt:
+                    v.append("warp pre-click framing missing 'a comparison, "
+                             "not a promise'")
+
+        # -- 19/20. fine print ------------------------------------------------------
+        if "<details" not in md:
+            v.append("fine print must be a collapsed <details> block")
+        if "Nothing on this page is a guarantee your print succeeds" not in md:
+            v.append("missing the no-guarantee line")
+        # a dead or placeholder link is worse than no link, on ANY page
+        if re.search(r"\]\(\s*(None|null|)\s*\)", md):
+            v.append("dead link on the page (empty/None target)")
+        if unreadable:
+            if "full technical report" in md:
+                v.append("unreadable page must not offer a technical report "
+                         "(nothing was measured)")
+        elif "full technical report" not in md:
+            v.append("missing the technical-report link/mention")
+        fp = _rv_find_region(md, "<details", ["</details>"])
+        if fp:
+            fpt = md[fp[0]:fp[1]]
+            if "facets" in fpt and "repaired at full quality" not in fpt:
+                v.append("decimation disclosure missing 'repaired at full "
+                         "quality'")
+
+        # -- 21. banned jargon outside its allowed context ----------------------------
+        scan = masked
+        for pat, name in _RV_BANNED:
+            if re.search(pat, scan, re.I):
+                v.append(f"banned word outside shop block: {name}")
+        for pat, name in _RV_BANNED_CS:
+            if re.search(pat, scan):
+                v.append(f"banned token outside shop block: {name}")
+        no_warp = scan.replace(warp_txt, "") if warp_txt else scan
+        if re.search(r"\bbrim\b", no_warp, re.I):
+            v.append("'brim' outside the warp result")
+        if re.search(r"\bsimulation\b", no_warp, re.I):
+            v.append("'simulation' used for a non-warp estimate")
+        for sm in re.finditer(r"\bslicer\b", scan, re.I):
+            tail = scan[sm.end():sm.end() + 60]
+            if not tail.startswith(" software (the program"):
+                v.append("bare 'slicer' outside the shop block")
+                break
+
+        # -- 22. no paths / CLI / telemetry --------------------------------------------
+        if re.search(r"[A-Za-z]:[\\/][^\s)]+|/tmp/|/home/", md):
+            v.append("absolute or temp file path on the page")
+        if re.search(r"(?<![\w—-])--[a-z]\w+", md):
+            v.append("CLI flag on the page")
+
+        # -- 23. numeric duplication (decimals; dims allowed 3×, rest 2×) --------------
+        dims_ok = set()
+        dm = re.search(r"\*\*([\d.]+) × ([\d.]+) × ([\d.]+) mm\*\*", masked)
+        if dm:
+            dims_ok = set(dm.groups())
+        lm = re.search(r"\*\*([\d.]+) mm\*\* at its longest", masked)
+        if lm:
+            dims_ok.add(lm.group(1))
+        counts: dict = {}
+        for tok in re.findall(r"\d+\.\d+", masked):
+            counts[tok] = counts.get(tok, 0) + 1
+        for tok, c in counts.items():
+            limit = 3 if tok in dims_ok else 2
+            if c > limit:
+                v.append(f"numeric value {tok} appears {c} times (limit "
+                         f"{limit})")
+    except Exception as e:
+        v.append(f"selfcheck internal error: {type(e).__name__}: {e}")
+    return v
