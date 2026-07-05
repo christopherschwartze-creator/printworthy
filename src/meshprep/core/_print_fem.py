@@ -176,7 +176,7 @@ def _reorient_build_up(mesh, build_dir):
 # =========================================================================== #
 def warp_analysis(mesh, material="PLA", build_dir=None, *,
                   max_elem=6000, gamma_z=0.0, bottom_locked_frac=0.0,
-                  use_locked=True, quick=False):
+                  use_locked=True, quick=False, keep_field=False):
     """Predict inherent-strain WARP of a part: corner lift (mm) + hotspot field.
 
     mesh        : trimesh solid (the part as printed).
@@ -190,6 +190,10 @@ def warp_analysis(mesh, material="PLA", build_dir=None, *,
         ok, max_corner_lift_mm (LOWER bound), corner_lift_mm (per corner),
         residual_hotspot_eps_grad, thickness_H_mm, n_elem, pitch_mm,
         material, build_dir, uncalibrated=True, claim, sign='edges lift up off bed'.
+    keep_field=True additionally returns u_field_mm (n_node,3) and
+        node_coords_mm (n_node,3) -- the full released-curl displacement field,
+        for warp_precomp's vertex interpolation (opt-in; off by default so no
+        existing caller pays for two extra (n_node,3) arrays).
 
     PHYSICS: reuses the VALIDATED released-curl inherent-strain solver
     (fem_warp_probe.predict_warp), whose eigenstrain load passes the Timoshenko
@@ -254,6 +258,14 @@ def warp_analysis(mesh, material="PLA", build_dir=None, *,
             "warning": warn,
             "_raw": res,   # kept for rendering; not a public field
         }
+        if keep_field:
+            # res["U"]/res["coords"] are already computed by fwp.predict_warp
+            # (fem_warp_probe.py: displacement_field() line 254, "U"/"coords"
+            # keys lines 342/344) and already flow this far inside `res` --
+            # publish stable public names, no recompute.
+            out["u_field_mm"] = res["U"]            # (n_node, 3) mm
+            out["node_coords_mm"] = res["coords"]   # (n_node, 3) mm, same node order
+            # pitch is already public as out["pitch_mm"] (line 248) -- reuse, no new key.
         return PrintFEMResult("warp", out)
     except Exception as e:
         return PrintFEMResult("warp", {"ok": False, "reason": f"{type(e).__name__}: {e}"})
