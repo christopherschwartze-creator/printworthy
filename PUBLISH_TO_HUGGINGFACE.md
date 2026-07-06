@@ -1,8 +1,11 @@
 # Publishing meshprep to Hugging Face — complete first-timer walkthrough
 
-This takes you from "I have never used Hugging Face" to a live, working Space,
-in about 30–45 minutes. **Cost: $0** — the free CPU tier is genuinely free, for
-you and for everyone who uses it.
+**Part 1** (this page, top): the FREE Space — from "never used Hugging Face" to
+a live public demo. **Part 2** (below): putting the PAID offering online —
+selling the pro tier with per-use billing where it's practicable.
+
+Part 1 takes about 30–45 minutes. **Cost: $0** — the free CPU tier is genuinely
+free, for you and for everyone who uses it.
 
 > Quick operator checklist (for later deploys, once you know the ropes):
 > `space/DEPLOY.md`. This guide is the long-form version of the same process.
@@ -204,3 +207,126 @@ git add -A && git commit -m "deploy" && git push
 
 If the wheel ever exceeds 10 MB (it's far under today):
 `git lfs track "*.whl"` before committing.
+
+---
+---
+
+# Part 2 — Putting the PAID offering online
+
+Prerequisite: Part 1 done (free Space live). This part adds the money layer.
+
+## The architecture in one picture
+
+Hugging Face **hosts compute**; it has **no native way for a Space owner to
+charge users** (confirmed 2026 — no paywall/subscription feature for Spaces).
+So the pattern is:
+
+```
+Free Space (Part 1)            <- the funnel: demo, trust, README link "Go Pro"
+Pro Space (build step S1)      <- same UI + pro features, gated by a LICENSE KEY box
+Lemon Squeezy storefront       <- sells keys/credits/subscriptions, delivers files,
+                                  handles VAT/tax as merchant of record (5% + $0.50/txn)
+Private HF wheel repo          <- delivers the proprietary code to the Pro Space
+                                  WITHOUT exposing it (see the CRITICAL note below)
+```
+
+Everything meets at the license key: Lemon Squeezy issues it at purchase; the
+Pro Space validates it against their License API on every job and tracks usage.
+
+## Is per-use billing practicable? Yes — two flavors, one recommendation
+
+| Flavor | How | Verdict |
+|---|---|---|
+| **Prepaid credit packs** (e.g. $10 = 25 pro jobs) | Sell a license key on Lemon Squeezy; the Pro Space validates the key + decrements a usage counter per job (LS License API activate/validate + our count) | **RECOMMENDED for v1.** One clean transaction (fees stay sane), no billing surprises for the buyer, no revenue leakage if a Space sleeps mid-report, works at hobby scale |
+| **True metered / in-arrears** | Lemon Squeezy usage-based billing: the Space reports each job via their usage API; the customer is charged at period end | Practicable but **defer**: needs reliable usage reporting from a Space that can sleep/restart (ephemeral storage), and dispute handling. Adopt when a bureau asks for it |
+| Per-use for the LOCAL package | Metering software running on the buyer's own machine | **NO — by design.** That is DRM theater; against the honesty brand. Local pro = one-time seat or subscription |
+
+Fee math check (why packs, not micro-charges): Lemon Squeezy charges
+5% + $0.50 per transaction — on a $0.40 single job that is more than the
+price; on a $10 pack it is ~10%. Always aggregate per-use into packs.
+
+## CRITICAL: never put the pro wheel in a Space repo
+
+**Public Space repos expose their files** — anyone can open the Files tab and
+download whatever is there. A public Pro Space with the meshprep_pro wheel in
+it is an accidental open-source release of the paid product.
+
+The standard pattern instead:
+
+1. Create a **private** HF model/dataset repo (e.g. `<you>/meshprep-pro-wheels`,
+   visibility Private) and upload the pro wheel there.
+2. In the Pro Space: **Settings -> Variables and secrets -> New secret**
+   `HF_TOKEN` = a fine-grained read token for that private repo.
+3. The Pro Space startup (not requirements.txt) installs it at boot:
+   pip-install from a `huggingface_hub.hf_hub_download(...)` of the wheel,
+   authenticated by the secret. The Space's own visible files stay a thin shim.
+4. Same trick holds the **Lemon Squeezy API key** (secret `LS_API_KEY`) used to
+   validate license keys server-side. Secrets are never visible to visitors.
+
+## The storefront: Lemon Squeezy setup (~1 hour, one-time)
+
+1. Create the account + store at lemonsqueezy.com (identity/payout details —
+   they are merchant of record, so VAT/sales tax is their problem, not yours).
+2. Create the products (Store -> Products -> New):
+
+   | Product | Type | License keys | Suggested v1 price |
+   |---|---|---|---|
+   | retopo-pro seat (local package + Pro Space access) | One-time | ON, activation limit 2 | ~$79 (at/under the $109 incumbent) |
+   | meshprep credits — 25 pro jobs | One-time | ON, activation limit 1 | ~$10 |
+   | Bureau tier (quote API + batch + warp pre-comp + priority) | Subscription, monthly | ON (key active while sub active) | $49/mo to start |
+
+   Attach the deliverable file (pro wheel / future exe) to the seat product —
+   LS handles the download delivery and updates.
+3. Toggle **Test mode**, buy each product yourself with the test card, confirm
+   the key arrives and validates via the License API. Only then go live.
+4. PLACEHOLDERS TO CLEAR FIRST (from meshprep_pro/PRO_BUILD_REPORT.md): real
+   counsel-reviewed license terms replace the LICENSE placeholder; final
+   product name (PyPI/trademark check like the free package got).
+
+## Build step S1 — the Pro Space (the one piece of code this plan needs)
+
+Not built yet; scoped small on purpose (~a day of session work):
+
+- Copy the free `space/` pattern -> `space_pro/`.
+- UI = the free app + a **license key box** + the pro features unlocked when a
+  key validates: retopo-pro (with the fidelity certificate), warp
+  pre-compensation, quote (rate card upload), bigger upload cap.
+- Per job: validate the key (LS License API, via the secret) -> check credits
+  remaining -> run -> decrement -> show "17 credits left".
+- Fail HONESTLY: LS unreachable -> "cannot validate right now, try again — no
+  credit consumed"; invalid key -> plain message + buy link. No gray areas.
+- Deploy **private first**, test with your own test-mode key end-to-end, then
+  flip public.
+- Hardware note: start on the free tier; if pro users hit cold starts, the
+  upgraded always-on CPU (~$20-25/mo) is the first cost that revenue must
+  cover — it is also the cheapest "priority" feature you can sell.
+
+## Additional features considered (per-use fit x build cost)
+
+| Feature | Per-use fit | Build cost | Verdict |
+|---|---|---|---|
+| **Certificate PDF** — branded per-part printability/fidelity certificate (the report already computes everything; render it pretty, stamp date+hash) | Perfect (1 credit) | Trivial (a template) | **Build with S1** — bureaus like artifacts they can forward |
+| **Autorig-as-a-service** — static mesh -> rigged glTF (exists in Forge, Khronos-validated, 0 errors) | Perfect (1-2 credits/model) | Medium (wire existing code into the Pro Space) | **Strong #2** — the r/blender money crowd, distinct audience from print |
+| Priority/size limits (50 MB, front of queue) | Natural (tier perk) | Config only | Bundle into the seat/sub, do not sell alone |
+| Quote API for bureaus (batch, deterministic) | Wrong model — subscription | Already built (pro) | Bureau tier anchor, not per-use |
+| STEP/IGES input (bureaus will ask) | Enabler, not a product | Medium + **license check needed** (OCCT via cadquery/OCP is LGPL-with-exception — needs the same scrutiny pyqf got) | Defer until a bureau asks |
+| Support enforcers / multi-material 3MF | Fine | Still gated on the GUI byte-diff verification (a user step, documented in their stubs) | Defer |
+| Warp pre-comp | Already in pro | Done | Becomes a per-use credit item on the Pro Space |
+
+**Discipline note:** nothing above except the Certificate PDF should be built
+before the first real sale — the plan's own history says distribution, not
+features, is the constraint. S1 + storefront + the free-Space funnel is the
+complete v1 loop: **try free -> hit the pro wall -> buy credits/seat -> use pro.**
+
+## Order of operations (the whole Part 2 as a checklist)
+
+1. Part 1 live (free Space public).
+2. Lemon Squeezy store + 3 products in test mode.
+3. Private wheel repo + secrets pattern proven (upload wheel, token works).
+4. Build S1 Pro Space (+ Certificate PDF), deploy private, test-mode purchase
+   -> key -> job -> decrement, end to end.
+5. Counsel-reviewed terms + final name -> flip LS out of test mode -> Pro Space
+   public.
+6. Announce in the free Space README + the community posts. Watch the first
+   real purchase closely and refund fast if anything is wrong — the first
+   ten customers are the reputation.
