@@ -105,6 +105,16 @@ _SMART_BUDGET_S = 90.0
 # Cap on scored seam candidates (bounds O(pairs^2) section work on big meshes).
 _MAX_SEAM_CANDS = 120
 
+# CoACD wall-clock budget (s). coacd.run_coacd() takes NO timeout argument and a
+# native crash inside libcoacd cannot be caught by try/except -- an unbounded
+# search hangs the host and a segfault kills it. So the decomposition runs in an
+# ISOLATED CHILD PROCESS: on overrun the child is killed (interruptible), and a
+# native crash kills only the child (crash-safe). Tunable via env; default 60 s.
+try:
+    _COACD_BUDGET_S = float(os.environ.get("MESHPREP_COACD_BUDGET_S", "60") or 60)
+except Exception:
+    _COACD_BUDGET_S = 60.0
+
 # Neck-cut tightness floor: hemisphere-equator isoperimetric reference.
 _TIGHT_FLOOR = 1.0 / (2.0 * np.pi)
 
@@ -969,37 +979,123 @@ def fit_coupon(out_path=None, *, clearances=(0.2, 0.3, 0.4, 0.5), peg_d=_PEG_D):
 # ======================================================================
 # CoACD proposal + printability helpers
 # ======================================================================
+def _coacd_worker(in_path, out_path):
+    """CHILD-PROCESS entry point: run CoACD on the proxy mesh at ``in_path`` and
+    write its convex parts to ``out_path`` (a .npz). Executed in a SEPARATE Python
+    process by ``_run_coacd_subprocess`` so that an unbounded native search can be
+    killed and a native libcoacd crash takes down only this child, never the host.
+    Not part of the public API; talks to the parent purely through the two files."""
+    import numpy as _np
+    import coacd as _coacd
+    with _np.load(in_path) as data:
+        v = _np.asarray(data["v"], dtype=_np.float64)
+        f = _np.asarray(data["f"], dtype=_np.int64)
+    try:
+        _coacd.set_log_level("error")
+    except Exception:
+        pass
+    raw = _coacd.run_coacd(_coacd.Mesh(v, f), threshold=0.05)
+    out = {"n": _np.int64(len(raw))}
+    for i, (pv, pf) in enumerate(raw):
+        out["v%d" % i] = _np.asarray(pv, dtype=_np.float64)
+        out["f%d" % i] = _np.asarray(pf, dtype=_np.int64)
+    _np.savez(out_path, **out)
+
+
+def _run_coacd_subprocess(v, f):
+    """Run CoACD in a wall-clock-bounded, crash-isolated child process.
+
+    Returns ``(parts | None, reason)``: reason is None on success, else one of
+    ``'timeout'`` (search exceeded _COACD_BUDGET_S -> child killed),
+    ``'crash'`` (child exited non-zero / produced no output -- e.g. a native
+    segfault, which is contained here and never reaches the host), or
+    ``'error'`` (an I/O / marshalling failure in the parent). Never raises."""
+    import subprocess
+    import sys
+    import tempfile
+    tmpdir = tempfile.mkdtemp(prefix="meshprep_coacd_")
+    in_path = os.path.join(tmpdir, "in.npz")
+    out_path = os.path.join(tmpdir, "out.npz")
+    try:
+        np.savez(in_path, v=np.asarray(v, np.float64), f=np.asarray(f, np.int64))
+        code = ("import sys, meshprep.split as s; "
+                "s._coacd_worker(sys.argv[1], sys.argv[2])")
+        try:
+            proc = subprocess.run(
+                [sys.executable, "-c", code, in_path, out_path],
+                timeout=_COACD_BUDGET_S,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except subprocess.TimeoutExpired:
+            # subprocess.run has already killed and reaped the child we spawned.
+            return None, "timeout"
+        if proc.returncode != 0 or not os.path.exists(out_path):
+            # non-zero exit includes a native crash inside libcoacd, isolated here.
+            return None, "crash"
+        import trimesh
+        with np.load(out_path) as data:
+            n = int(data["n"])
+            parts = []
+            for i in range(n):
+                parts.append(trimesh.Trimesh(
+                    vertices=np.asarray(data["v%d" % i], float),
+                    faces=np.asarray(data["f%d" % i]), process=False))
+        return parts, None
+    except Exception:
+        return None, "error"
+    finally:
+        try:
+            import shutil
+            shutil.rmtree(tmpdir, ignore_errors=True)
+        except Exception:
+            pass
+
+
+def _coacd_reason_text(reason):
+    """Human-honest note for a CoACD outcome code (see _run_coacd_subprocess)."""
+    return {
+        "unavailable": ("CoACD is not installed - install the extra "
+                        "`meshprep[split]` to enable bed-splitting"),
+        "timeout": (f"CoACD's convex-decomposition search exceeded its "
+                    f"{_COACD_BUDGET_S:.0f}s wall-clock budget and was stopped "
+                    f"(run in an isolated subprocess so it cannot hang the host)"),
+        "crash": ("CoACD crashed inside its native library (isolated in a "
+                  "subprocess, so the host process survived)"),
+        "empty": "CoACD ran but produced no parts",
+        "error": "CoACD decomposition failed",
+    }.get(reason, "CoACD decomposition was unavailable")
+
+
 def _coacd_parts(mesh):
     """CoACD convex decomposition on a decimated proxy. Returns
-    ``(parts, proxy_n_faces)`` where parts is a list of trimesh parts (or None if
-    CoACD is unavailable/failed) and proxy_n_faces is the decimated-proxy face
-    count (or None) -- exposed so the CHEAP path can report the compute-cap note.
-    Never raises."""
+    ``(parts, proxy_n_faces, reason)`` where parts is a list of trimesh parts (or
+    None if CoACD is unavailable/timed out/crashed/failed), proxy_n_faces is the
+    decimated-proxy face count (or None) -- exposed so the CHEAP path can report
+    the compute-cap note -- and reason is None on success or an outcome code for
+    _coacd_reason_text ('unavailable'|'timeout'|'crash'|'empty'|'error').
+
+    The native decomposition is delegated to a wall-clock-bounded CHILD PROCESS
+    (see _run_coacd_subprocess): coacd.run_coacd() has no timeout parameter and a
+    native crash is uncatchable in-process, so an unbounded search or a segfault
+    would otherwise hang / kill the host. Never raises."""
     try:
-        import coacd
+        import coacd  # noqa: F401  (availability probe; native import, no compute)
     except Exception:
-        return None, None
+        return None, None, "unavailable"
+    proxy_nf = None
     try:
-        import trimesh
         from .core._mesh_util import decimate
         proxy = decimate(mesh, max_faces=_MAX_FACES)
         proxy_nf = int(len(proxy.faces))
-        try:
-            coacd.set_log_level("error")
-        except Exception:
-            pass
-        raw = coacd.run_coacd(
-            coacd.Mesh(np.asarray(proxy.vertices, dtype=np.float64),
-                       np.asarray(proxy.faces, dtype=np.int64)),
-            threshold=0.05,
-        )
-        parts = []
-        for (pv, pf) in raw:
-            parts.append(trimesh.Trimesh(vertices=np.asarray(pv, float),
-                                         faces=np.asarray(pf), process=False))
-        return parts, proxy_nf
     except Exception:
-        return None, None
+        return None, proxy_nf, "error"
+    parts, reason = _run_coacd_subprocess(
+        np.asarray(proxy.vertices, dtype=np.float64),
+        np.asarray(proxy.faces, dtype=np.int64))
+    if parts is None:
+        return None, proxy_nf, reason
+    if not parts:
+        return None, proxy_nf, "empty"
+    return parts, proxy_nf, None
 
 
 def _printable(mesh):
@@ -1138,17 +1234,11 @@ def split_for_bed(mesh, profile=None, *, connectors=True, out_dir=None,
                                 load_case=load_case, fit_mm=fit_mm)
 
         # ---- CHEAP path: CoACD report (loose convex chunks) -----------------
-        parts_topo, proxy_nf = _coacd_parts(m)
+        parts_topo, proxy_nf, coacd_reason = _coacd_parts(m)
         if parts_topo is None:
-            try:
-                import coacd  # noqa: F401  (distinguish "missing" from "failed")
-                reason = ("CoACD ran but produced no parts")
-            except Exception:
-                reason = ("CoACD is not installed - install the extra "
-                          "`meshprep[split]` to enable bed-splitting")
             return {"ok": False, "parts": [],
                     "note": (f"mesh {ext_s} mm exceeds {bed_s} mm bed ({bed_label}) "
-                             f"and {reason}")}
+                             f"and {_coacd_reason_text(coacd_reason)}")}
 
         parts, saved = [], 0
         for i, pm in enumerate(parts_topo):
@@ -1227,14 +1317,14 @@ def _smart_split(m, bed, bed_label, ext_s, bed_s, *, connectors, out_dir,
         notes = [f"mesh {ext_s} mm exceeds {bed_s} mm bed ({bed_label})"]
         timed_out = False
 
-        parts_topo, _proxy_nf = _coacd_parts(m)
+        parts_topo, _proxy_nf, coacd_reason = _coacd_parts(m)
         if parts_topo is None:
             return {"ok": False, "parts": [], "seams": [],
                     "connectors": {"n_connectors": 0, "fit_mm": float(fit_mm),
                                    "fallback": True},
                     "note": "; ".join(notes + [
-                        "smart split: CoACD unavailable -- install the extra "
-                        "`meshprep[split]` (no fallback split performed)"])}
+                        f"smart split: {_coacd_reason_text(coacd_reason)} "
+                        f"(no fallback split performed)"])}
 
         sp = plan_seams(m, parts_topo, load_case=load_case)
         seams = sp["seams"] if sp.get("ok") else []
