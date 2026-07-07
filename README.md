@@ -89,9 +89,9 @@ print(result["verdict"], "-", result["headline"])   # never raises
 | Feature | Stub | One line |
 |---|---|---|
 | **Warp pre-compensation** | `core/warp_precomp.py` | Invert the validated warp field: pre-deform the mesh so the print comes off the bed straight. The flagship. |
-| **Risk-driven supports** | `core/support_mods.py` | Premortem risk field → support **enforcer/blocker** modifier volumes in the 3MF. |
+| **Risk-driven supports** | `core/support_mods.py` — **implemented** | Premortem risk field → schema-verified **SupportEnforcer / SupportBlocker** volumes (PrusaSlicer `Model.cpp`/`3mf.cpp`); the slicing effect (enforcer adds / blocker removes support material) is MEASURED via a CLI proof, not asserted — `meshprep prep --supports` CLI wiring not yet landed, call `support_mods()` directly. |
 | **Stress-mapped multi-material** | `core/multimaterial.py` | The reinforce field assigns **extruders**: rigid on the load path, soft/cheap elsewhere. |
-| **Smart split + connectors** | `split.py` (`plan_seams`, `plan_connectors`) | Seams scored into concave creases (EI neck-cut), peg/socket connectors, fit coupon. |
+| **Smart split + connectors** | `split.py` (`plan_seams`, `plan_connectors`) — **implemented** | Seams scored (concavity/load/area) into concave creases (EI neck-cut) or CoACD interfaces, exact `manifold3d` boolean cut with a labeled fallback ladder, peg/socket connectors + fit coupon — opt-in via `split_for_bed(mesh, profile, smart=True)`. |
 | **Instant print quotes** | `quote.py` | Bureau intake: verdict + fix certificate + reproducible cost quote, single file or batch. |
 
 Each stub is callable and returns an honest `{"ok": False, "implemented": False, note}` —

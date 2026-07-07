@@ -93,6 +93,11 @@ NAME_KEY = "name"
 # ModelVolume::type_to_string (Model.cpp)
 VT_MODEL_PART = "ModelPart"
 VT_PARAMETER_MODIFIER = "ParameterModifier"
+# verbatim from PrusaSlicer Model.cpp::type_to_string (source recon, CamelCase
+# SINGULAR -- see support_mods.py for the schema evidence and the CLI proof
+# that these two values are honored by PrusaSlicer's support generator).
+VT_SUPPORT_ENFORCER = "SupportEnforcer"
+VT_SUPPORT_BLOCKER = "SupportBlocker"
 # the OPC part paths PrusaSlicer uses
 MODEL_FILE = "3D/3dmodel.model"
 PRUSA_CONFIG_FILE = "Metadata/Slic3r_PE_model.config"
@@ -112,15 +117,22 @@ class Volume:
     settings     : dict of {config_key: serialized_value}. For an infill override
                    pass {"fill_density": "80%"} (value MUST be the opt_serialize
                    form, i.e. percent options carry a trailing '%').
+    volume_type  : None (default) -> behavior unchanged, type is derived from
+                   is_modifier exactly as before. Or an explicit, source-verified
+                   ModelVolumeType STRING (see VT_* constants above), e.g.
+                   VT_SUPPORT_ENFORCER / VT_SUPPORT_BLOCKER. Enforcer/blocker
+                   volumes are NOT ParameterModifiers, so passing volume_type
+                   suppresses the modifier=1 flag (see _prusa_config_xml).
     """
 
     def __init__(self, vertices, faces, name="volume", is_modifier=False,
-                 settings=None):
+                 settings=None, volume_type=None):
         self.vertices = np.asarray(vertices, float)
         self.faces = np.asarray(faces, np.int64)
         self.name = name
         self.is_modifier = bool(is_modifier)
         self.settings = dict(settings or {})
+        self.volume_type = volume_type
 
 
 def _model_xml(objects: Sequence) -> str:
@@ -174,7 +186,13 @@ def _prusa_config_xml(objects: Sequence) -> str:
                        f'{FIRST_TRIANGLE_ID_ATTR}="{vol["firstid"]}" '
                        f'{LAST_TRIANGLE_ID_ATTR}="{vol["lastid"]}">')
             out.append(_meta(3, VOLUME_TYPE, NAME_KEY, vol["name"]))
-            if vol["is_modifier"]:
+            vt = vol.get("volume_type")
+            if vt is not None:
+                # explicit source-verified type (SupportEnforcer/SupportBlocker/
+                # etc.); enforcer/blocker are NOT ParameterModifiers, so do NOT
+                # emit modifier=1 for them.
+                out.append(_meta(3, VOLUME_TYPE, VOLUME_TYPE_KEY, vt))
+            elif vol["is_modifier"]:
                 # emit BOTH flags (importer accepts either; cross-version safe)
                 out.append(_meta(3, VOLUME_TYPE, MODIFIER_KEY, "1"))
                 out.append(_meta(3, VOLUME_TYPE, VOLUME_TYPE_KEY,
@@ -272,6 +290,7 @@ def write_3mf(parts: Sequence, out_path: str, *, include_orca=True) -> str:
                 "is_modifier": vol.is_modifier,
                 "settings": vol.settings,
                 "part_id": part_id,
+                "volume_type": vol.volume_type,
             })
             tri_cursor += nf
             v_offset += nv
