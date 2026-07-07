@@ -283,9 +283,15 @@ The standard pattern instead:
    counsel-reviewed license terms replace the LICENSE placeholder; final
    product name (PyPI/trademark check like the free package got).
 
-## Build step S1 — the Pro Space (the one piece of code this plan needs)
+## Build step S1 — the Pro Space ✅ BUILT (2026-07-06)
 
-Not built yet; scoped small on purpose (~a day of session work):
+S1 exists and is verified: `meshprep_pro/space_pro/` (thin shim + boot),
+the credit gate (activate-at-delivery — a credit is consumed ONLY when the
+artifact is delivered; crash/outage/refund rows all verified against a
+faithful local Lemon Squeezy mock), and the Certificate PDF. **Your deploy
+steps live in `meshprep_pro/DEPLOY_PRO.md`**; the build record + remaining
+checklist to first sale is `meshprep_pro/S1_BUILD_REPORT.md` §6.
+What was built (for reference):
 
 - Copy the free `space/` pattern -> `space_pro/`.
 - UI = the free app + a **license key box** + the pro features unlocked when a
@@ -305,7 +311,7 @@ Not built yet; scoped small on purpose (~a day of session work):
 
 | Feature | Per-use fit | Build cost | Verdict |
 |---|---|---|---|
-| **Certificate PDF** — branded per-part printability/fidelity certificate (the report already computes everything; render it pretty, stamp date+hash) | Perfect (1 credit) | Trivial (a template) | **Build with S1** — bureaus like artifacts they can forward |
+| **Certificate PDF** — branded per-part printability/fidelity certificate (SHA256-stamped, honesty labels verbatim) | Perfect (1 credit) | ✅ BUILT with S1 | Verified: hash matches delivered bytes; ships with every pro job |
 | **Autorig-as-a-service** — static mesh -> rigged glTF (exists in Forge, Khronos-validated, 0 errors) | Perfect (1-2 credits/model) | Medium (wire existing code into the Pro Space) | **Strong #2** — the r/blender money crowd, distinct audience from print |
 | Priority/size limits (50 MB, front of queue) | Natural (tier perk) | Config only | Bundle into the seat/sub, do not sell alone |
 | Quote API for bureaus (batch, deterministic) | Wrong model — subscription | Already built (pro) | Bureau tier anchor, not per-use |
@@ -323,8 +329,10 @@ complete v1 loop: **try free -> hit the pro wall -> buy credits/seat -> use pro.
 1. Part 1 live (free Space public).
 2. Lemon Squeezy store + 3 products in test mode.
 3. Private wheel repo + secrets pattern proven (upload wheel, token works).
-4. Build S1 Pro Space (+ Certificate PDF), deploy private, test-mode purchase
-   -> key -> job -> decrement, end to end.
+4. ✅ S1 is BUILT (space_pro/ + credit gate + Certificate PDF, verified
+   against the local mock). Deploy it PRIVATE per meshprep_pro/DEPLOY_PRO.md,
+   then run the real test-mode purchase -> key -> job -> decrement, end to
+   end (the one thing the mock cannot prove).
 5. Counsel-reviewed terms + final name -> flip LS out of test mode -> Pro Space
    public.
 6. Announce in the free Space README + the community posts. Watch the first
