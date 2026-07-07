@@ -67,6 +67,7 @@ geometry, fall back to plane cuts WITHOUT connectors and say so per part.
 from __future__ import annotations
 
 import os
+import time
 
 import numpy as np
 
@@ -96,6 +97,13 @@ _MAX_CONNECTORS = 3        # 2-3 alignment features per seam
 
 # Greedy smart-split cut budget (memory / scope cap).
 _MAX_SEAM_CUTS = 4
+
+# Smart-split wall-clock budget (s): a large pathological mesh (repeated
+# curvature + boolean cuts) can otherwise run unbounded; on overrun the pipeline
+# stops and returns a labeled best-effort partial split (never hangs).
+_SMART_BUDGET_S = 90.0
+# Cap on scored seam candidates (bounds O(pairs^2) section work on big meshes).
+_MAX_SEAM_CANDS = 120
 
 # Neck-cut tightness floor: hemisphere-equator isoperimetric reference.
 _TIGHT_FLOOR = 1.0 / (2.0 * np.pi)
@@ -605,6 +613,16 @@ def plan_seams(mesh, parts, *, load_case=None):
     """
     try:
         m = _load(mesh)
+        # Bound scoring cost on large meshes: score on a decimated proxy (the
+        # score is a RELATIVE ranking heuristic, so the proxy ranks the same
+        # seam planes; cut planes are geometry-space and stay valid). Prevents
+        # the repeated section/concavity + curvature work from running unbounded.
+        try:
+            if len(m.faces) > _MAX_FACES:
+                from .core._mesh_util import decimate
+                m = decimate(m, max_faces=_MAX_FACES)
+        except Exception:
+            pass
         pmeshes = _as_part_meshes(parts)
         cands = []  # (origin, normal, source)
 
@@ -633,6 +651,11 @@ def plan_seams(mesh, parts, *, load_case=None):
             return {"ok": False, "seams": [],
                     "note": "no scorable interface: no adjacent CoACD part pairs "
                             "and no concave neck waist found (never raises)."}
+        if len(cands) > _MAX_SEAM_CANDS:
+            # bound section work on big configs, but never drop hidden neck seams
+            necks = [c for c in cands if c[2].startswith("neck_")]
+            pairs = [c for c in cands if not c[2].startswith("neck_")]
+            cands = pairs[:max(_MAX_SEAM_CANDS - len(necks), 0)] + necks
 
         note_bits = []
         load_field = None
@@ -773,6 +796,29 @@ def _cylinder_at(point, normal, radius, height):
                                      sections=32, transform=T)
 
 
+def _seam_section(part, o, n):
+    """Cross-section of `part` at the seam plane, nudged OFF the coincident
+    cut-cap plane when needed. trimesh.section returns None when the plane is
+    exactly a cap face (the seam plane is the boolean cut's own cap), so if the
+    on-plane section is empty this steps a small epsilon INTO the body along
+    +/-normal and retries. Returns (polygon|None, to_3D|None). Never raises."""
+    poly, to3d = _section_polygon(part, o, n)
+    if poly is not None:
+        return poly, to3d
+    try:
+        o = np.asarray(o, float)
+        nn = _unit(n)
+        ext = float(np.max(np.asarray(part.extents, float)))
+        step = max(1e-4, 5e-3 * ext)
+        for s in (1.0, -1.0, 2.0, -2.0, 4.0, -4.0):
+            poly, to3d = _section_polygon(part, o + s * step * nn, nn)
+            if poly is not None:
+                return poly, to3d
+    except Exception:
+        pass
+    return None, None
+
+
 def plan_connectors(parts, seams, *, fit_mm=0.4, style="peg"):
     """Add cylindrical peg/socket alignment features across a seam so the two
     parts reassemble without a jig.
@@ -814,7 +860,7 @@ def plan_connectors(parts, seams, *, fit_mm=0.4, style="peg"):
                              "part even after manifold-safety repair (RELATIVE); "
                              "parts remain loose plane cuts.")}
 
-        poly, to3d = _section_polygon(partA, o, n)
+        poly, to3d = _seam_section(partA, o, n)
         if poly is None:
             return {"ok": False, "parts": list(parts), "n_connectors": 0,
                     "fit_mm": float(fit_mm),
@@ -924,16 +970,20 @@ def fit_coupon(out_path=None, *, clearances=(0.2, 0.3, 0.4, 0.5), peg_d=_PEG_D):
 # CoACD proposal + printability helpers
 # ======================================================================
 def _coacd_parts(mesh):
-    """CoACD convex decomposition on a decimated proxy. Returns a list of
-    trimesh parts, or None if CoACD is unavailable/failed. Never raises."""
+    """CoACD convex decomposition on a decimated proxy. Returns
+    ``(parts, proxy_n_faces)`` where parts is a list of trimesh parts (or None if
+    CoACD is unavailable/failed) and proxy_n_faces is the decimated-proxy face
+    count (or None) -- exposed so the CHEAP path can report the compute-cap note.
+    Never raises."""
     try:
         import coacd
     except Exception:
-        return None
+        return None, None
     try:
         import trimesh
         from .core._mesh_util import decimate
         proxy = decimate(mesh, max_faces=_MAX_FACES)
+        proxy_nf = int(len(proxy.faces))
         try:
             coacd.set_log_level("error")
         except Exception:
@@ -947,9 +997,9 @@ def _coacd_parts(mesh):
         for (pv, pf) in raw:
             parts.append(trimesh.Trimesh(vertices=np.asarray(pv, float),
                                          faces=np.asarray(pf), process=False))
-        return parts
+        return parts, proxy_nf
     except Exception:
-        return None
+        return None, None
 
 
 def _printable(mesh):
@@ -959,6 +1009,62 @@ def _printable(mesh):
         return bool(assess_printability(mesh).get("printable", False))
     except Exception:
         return False
+
+
+def _watertight_as_exported(mesh):
+    """Watertightness of the part AS THE USER RECEIVES IT: round-trip through an
+    STL (face-soup, no shared vertices) and reload exactly as an exported part
+    reloads for printing. This is the honest check -- manifold3d/boolean output
+    is watertight only in its indexed in-memory form; a peg/socket boolean can
+    reload NON-watertight. assess_printability does NOT test this, so the per-part
+    gate must. Returns bool. Never raises."""
+    import io
+    import trimesh
+    try:
+        buf = io.BytesIO()
+        mesh.export(buf, file_type="stl")
+        buf.seek(0)
+        rt = trimesh.load(buf, file_type="stl", force="mesh")
+        return bool(rt.is_watertight)
+    except Exception:
+        try:
+            return bool(mesh.is_watertight)
+        except Exception:
+            return False
+
+
+def _finalize_watertight(mesh):
+    """Best-effort: make a part watertight AS EXPORTED before the gate judges it.
+    Weld coincident vertices, drop duplicate faces, fill small holes, re-orient,
+    then verify via the STL round-trip. Returns (mesh_out, watertight_bool). If
+    repair cannot close it, returns the (repaired) mesh with False so the gate
+    fails it honestly rather than shipping a non-watertight part as PASS."""
+    import trimesh
+    if _watertight_as_exported(mesh):
+        return mesh, True
+    try:
+        w = mesh.copy()
+        try:
+            w.merge_vertices()
+        except Exception:
+            pass
+        try:
+            w.update_faces(w.unique_faces())
+            w.update_faces(w.nondegenerate_faces())
+            w.remove_unreferenced_vertices()
+        except Exception:
+            pass
+        try:
+            trimesh.repair.fill_holes(w)
+        except Exception:
+            pass
+        try:
+            trimesh.repair.fix_normals(w)
+        except Exception:
+            pass
+        return w, _watertight_as_exported(w)
+    except Exception:
+        return mesh, False
 
 
 # ======================================================================
@@ -987,9 +1093,14 @@ def split_for_bed(mesh, profile=None, *, connectors=True, out_dir=None,
 
     CHEAP return: ``{"ok", "parts", "note"}`` where parts entries are
     ``{"index", "n_faces", "extents_mm", "fits_bed"[, "file"]}``.
-    SMART return additionally carries ``"seams"`` (executed seam records) and
-    ``"connectors": {"n_connectors", "fit_mm", "fallback"}``; ``ok`` = every part
-    fits the bed AND is printable.
+    SMART return: each part entry additionally carries ``"printable"`` and
+    ``"watertight"`` (watertightness measured AS EXPORTED via an STL round-trip,
+    because a boolean/connector part is watertight only in indexed in-memory form
+    and assess_printability does not test it). It also carries ``"seams"``
+    (executed seam records) and ``"connectors": {"n_connectors", "fit_mm",
+    "fallback"}``. ``ok`` = every part fits the bed AND is printable AND is
+    watertight-as-exported. On a large pathological mesh the pipeline honors an
+    internal wall-clock budget and returns a labeled best-effort PARTIAL split.
     """
     try:
         try:
@@ -1027,7 +1138,7 @@ def split_for_bed(mesh, profile=None, *, connectors=True, out_dir=None,
                                 load_case=load_case, fit_mm=fit_mm)
 
         # ---- CHEAP path: CoACD report (loose convex chunks) -----------------
-        parts_topo = _coacd_parts(m)
+        parts_topo, proxy_nf = _coacd_parts(m)
         if parts_topo is None:
             try:
                 import coacd  # noqa: F401  (distinguish "missing" from "failed")
@@ -1058,9 +1169,10 @@ def split_for_bed(mesh, profile=None, *, connectors=True, out_dir=None,
         n_fit = sum(p["fits_bed"] for p in parts)
         bits = [f"mesh {ext_s} mm exceeds {bed_s} mm bed ({bed_label}); "
                 f"CoACD split into {len(parts)} convex parts, {n_fit} fit the bed"]
+        if proxy_nf is not None and proxy_nf < len(m.faces):
+            bits.append(f"decomposed on a {proxy_nf}-face proxy (compute cap)")
         if connectors:
-            bits.append("connectors: not joined in the CHEAP path -- pass "
-                        "smart=True for scored seams + peg/socket connectors")
+            bits.append("connectors: planned (parts are loose, not joined)")
         if saved:
             bits.append(f"{saved} part STLs saved to {out_dir}")
         return {"ok": bool(parts) and n_fit == len(parts),
@@ -1113,8 +1225,9 @@ def _smart_split(m, bed, bed_label, ext_s, bed_s, *, connectors, out_dir,
     ORIGINAL mesh -> connectors -> per-part gate. Fallback ladder, never raises."""
     try:
         notes = [f"mesh {ext_s} mm exceeds {bed_s} mm bed ({bed_label})"]
+        timed_out = False
 
-        parts_topo = _coacd_parts(m)
+        parts_topo, _proxy_nf = _coacd_parts(m)
         if parts_topo is None:
             return {"ok": False, "parts": [], "seams": [],
                     "connectors": {"n_connectors": 0, "fit_mm": float(fit_mm),
@@ -1131,6 +1244,11 @@ def _smart_split(m, bed, bed_label, ext_s, bed_s, *, connectors, out_dir,
             notes.append(f"no scorable hidden seam ({sp.get('note')})")
 
         # ---- TIER 1: greedy cut along ranked (hidden) seams ------------------
+        # Wall-clock budget for the CUTTING loops only (the geometric-bisection +
+        # boolean work that can run unbounded on a large pathological mesh). CoACD
+        # and plan_seams run before this; their cost is bounded separately (CoACD
+        # decimates to a proxy; plan_seams scores on a decimated proxy).
+        deadline = time.monotonic() + _SMART_BUDGET_S
         import trimesh  # noqa: F401
         pieces = [m]
         executed = []
@@ -1140,6 +1258,9 @@ def _smart_split(m, bed, bed_label, ext_s, bed_s, *, connectors, out_dir,
         used = 0
         for seam in seams:
             if used >= _MAX_SEAM_CUTS:
+                break
+            if time.monotonic() > deadline:
+                timed_out = True
                 break
             if all(_fits(p.extents, bed) for p in pieces):
                 break
@@ -1169,6 +1290,9 @@ def _smart_split(m, bed, bed_label, ext_s, bed_s, *, connectors, out_dir,
         # LONGEST axis. Honest label: this seam is NOT hidden.
         geom_used = 0
         for _ in range(_MAX_SEAM_CUTS + 2):
+            if time.monotonic() > deadline:
+                timed_out = True
+                break
             over = [i for i, p in enumerate(pieces) if not _fits(p.extents, bed)]
             if not over:
                 break
@@ -1191,17 +1315,27 @@ def _smart_split(m, bed, bed_label, ext_s, bed_s, *, connectors, out_dir,
                                 f"VISIBLE; place them where finishing is easy).")
 
         # ---- per-part gate + bed fit ----------------------------------------
+        # Watertightness is checked AS EXPORTED (STL round-trip), because a
+        # boolean/connector part is watertight only in indexed in-memory form and
+        # can reload non-watertight -- and assess_printability does not test it.
         out_parts = []
         all_ok = bool(pieces)
+        n_nonwt = 0
+        final_pieces = []
         for i, p in enumerate(pieces):
+            p, wt = _finalize_watertight(p)
+            final_pieces.append(p)
             pext = [float(v) for v in p.extents]
             fits = _fits(pext, bed)
             pr = _printable(p)
             out_parts.append({"index": i, "n_faces": int(len(p.faces)),
                               "extents_mm": pext, "fits_bed": fits,
-                              "printable": pr})
-            if not (fits and pr):
+                              "printable": pr, "watertight": bool(wt)})
+            if not wt:
+                n_nonwt += 1
+            if not (fits and pr and wt):
                 all_ok = False
+        pieces = final_pieces
         _save_parts(pieces, out_parts, out_dir)
 
         if not executed:
@@ -1216,6 +1350,15 @@ def _smart_split(m, bed, bed_label, ext_s, bed_s, *, connectors, out_dir,
             notes.append("connectors: disabled by caller")
         elif n_conn_total:
             notes.append(f"{n_conn_total} peg/socket connector(s) added")
+        if n_nonwt:
+            notes.append(f"{n_nonwt} part(s) reload NON-WATERTIGHT as exported STL "
+                         f"(boolean/connector artifact the weld+fill pass could not "
+                         f"close) -- gate FAILS them; slice with mesh-repair on or "
+                         f"re-split without connectors")
+        if timed_out:
+            notes.append(f"smart split hit its internal {_SMART_BUDGET_S:.0f}s time "
+                         f"budget and stopped early -- this is a best-effort PARTIAL "
+                         f"split; any part still over-bed is reported fits_bed=False")
         notes.extend(method_notes)
 
         return {"ok": bool(all_ok), "parts": out_parts, "seams": executed,
