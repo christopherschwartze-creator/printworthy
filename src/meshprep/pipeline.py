@@ -22,8 +22,8 @@ Discipline (house rules, carried through):
 PrepResult (dict) keys:
   ok, verdict ('PASS'|'WARN'|'FAIL'|'REJECTED'|'ERROR'), headline,
   report {markdown, json, md_path, json_path}, report_json (alias for the json),
-  files {input, fixed_glb, fixed_stl, prep_stl, prep_3mf?, quad_obj?, gcode?,
-         report_md, report_json},
+  files {input, fixed_glb, fixed_stl, prep_stl, prep_3mf?, supports_3mf?,
+         quad_obj?, gcode?, report_md, report_json},
   renders [png paths], render_captions {stem -> plain caption}, savings (slicer
   numbers or None), channels, cert, fix (fidelity/deviation certificate info or
   None), stages, notes, profile, mode, out_dir,
@@ -868,7 +868,7 @@ def _build_review(result, *, work_mesh, checks_before, checks_after,
 def prep(path_or_mesh, *, profile="generic_fdm", material=None, mode=None,
          preset=None,
          fix=True, orient=True, reinforce_load=None, reinforce_force_n=100.0,
-         fem_warp=False, fem_strength=False, retopo=False,
+         fem_warp=False, fem_strength=False, retopo=False, supports=False,
          out_dir=None, print_mm=None, nozzle_mm=None, max_faces=None,
          assume_unit=None, check_only=False, slicer_savings=True,
          verbose=False) -> dict:
@@ -894,6 +894,12 @@ def prep(path_or_mesh, *, profile="generic_fdm", material=None, mode=None,
     fem_strength     : opt-in orientation-strength screening (slow; 4 FEMs).
     retopo           : opt-in quad remesh of the prepped part (permissive
                        from-scratch backend) -> prep_quads.obj.
+    supports         : opt-in risk-driven SupportEnforcer/SupportBlocker 3MF
+                       (core.support_mods), built from the same premortem risk
+                       field, at the orientation that ships -> supports.3mf.
+                       Heuristic triage, not a guarantee any support was
+                       required; see the 'supports' channel note. Never blocks
+                       the verdict.
     out_dir          : where the package lands (default: a fresh temp dir).
     print_mm         : longest side of the printed part, mm. Default: keep the
                        mesh's own size if it looks like mm (5-500), else 60 mm.
@@ -916,7 +922,8 @@ def prep(path_or_mesh, *, profile="generic_fdm", material=None, mode=None,
                      mode=mode, preset=preset, fix=fix, orient=orient,
                      reinforce_load=reinforce_load,
                      reinforce_force_n=reinforce_force_n, fem_warp=fem_warp,
-                     fem_strength=fem_strength, retopo=retopo, out_dir=out_dir,
+                     fem_strength=fem_strength, retopo=retopo,
+                     supports=supports, out_dir=out_dir,
                      print_mm=print_mm, nozzle_mm=nozzle_mm,
                      max_faces=max_faces, assume_unit=assume_unit,
                      check_only=check_only,
@@ -940,6 +947,7 @@ def prep(path_or_mesh, *, profile="generic_fdm", material=None, mode=None,
 
 def _prep(path_or_mesh, *, profile, material, mode, preset, fix, orient,
           reinforce_load, reinforce_force_n, fem_warp, fem_strength, retopo,
+          supports=False,
           out_dir, print_mm, nozzle_mm, max_faces, assume_unit, check_only,
           slicer_savings, verbose):
     import numpy as np
@@ -1006,7 +1014,7 @@ def _prep(path_or_mesh, *, profile, material, mode, preset, fix, orient,
     nozzle = float(nozzle_mm or prof.get("nozzle_mm")
                    or prof.get("pixel_mm") or 0.4)
     if check_only:
-        fix = orient = retopo = slicer_savings = False
+        fix = orient = retopo = slicer_savings = supports = False
         reinforce_load = None
 
     if out_dir is None:
@@ -1401,6 +1409,49 @@ def _prep(path_or_mesh, *, profile, material, mode, preset, fix, orient,
         elif wr is not None:
             result["channels"]["warp"] = {
                 "note": wr.get("reason", "warp analysis unavailable")}
+
+    # -- 5d. support mods (opt-in; risk-driven SupportEnforcer/SupportBlocker
+    #        3MF). Runs on work_mesh AFTER orient (core.support_mods fixes its
+    #        own build_dir at the mesh's own +Z -- it assumes an already-
+    #        oriented part, same convention as warp/reinforce above). Additive
+    #        channel + file only; never touches the verdict.
+    if supports and not check_only and not _over_budget(
+            "supports", "risk-driven support enforcer/blocker 3MF"):
+        from .core.support_mods import support_mods as _support_mods
+        out_supports_3mf = os.path.join(out_dir, "supports.3mf")
+        sres = stages.run(
+            "supports",
+            lambda: _support_mods(work_mesh, out_3mf=out_supports_3mf),
+            label="risk-driven SupportEnforcer/SupportBlocker 3MF "
+                  "(PrusaSlicer schema); heuristic triage, uncalibrated")
+        if isinstance(sres, dict):
+            result["channels"]["supports"] = {
+                "ok": sres.get("ok"),
+                "out_3mf": sres.get("out_3mf"),
+                "n_enforcers": sres.get("n_enforcers"),
+                "n_blockers": sres.get("n_blockers"),
+                "risk_top": sres.get("risk_top"),
+                "uncalibrated": sres.get("uncalibrated", True),
+                "note": sres.get("note")}
+            if sres.get("ok") and sres.get("out_3mf"):
+                result["files"]["supports_3mf"] = sres["out_3mf"]
+                n_e = int(sres.get("n_enforcers") or 0)
+                n_b = int(sres.get("n_blockers") or 0)
+                notes.append(
+                    f"supports enforced on {n_e} risk region"
+                    f"{'s' if n_e != 1 else ''} / blocked on {n_b} region"
+                    f"{'s' if n_b != 1 else ''} -- open supports.3mf and set "
+                    "support_material_auto=0 in the slicer for the enforcer "
+                    "regions to take effect (support_material_auto=1 for the "
+                    "blocker regions); risk is a heuristic triage field, not "
+                    "a guarantee any support was actually required.")
+            elif sres.get("ok"):
+                notes.append("supports: " + (sres.get("note")
+                             or "no risk region cleared the enforce/block "
+                                "thresholds -- no supports.3mf written."))
+            else:
+                notes.append("supports: " + (sres.get("reason")
+                             or sres.get("note") or "support analysis failed"))
 
     # -- 6. strengthen ----------------------------------------------------------
     if lc is not None and not check_only and not _over_budget(
