@@ -10,8 +10,10 @@ repair (with a deviation certificate) → build orientation → warp/strength ph
 graded-infill 3MF where it actually helps → a plain-language report. Every stage is
 validated against closed-form solutions, controls, or independent validators — and every
 output says plainly what it does and does **not** certify. It never crashes on bad input
-and never reports success over a non-printable result (fuzz-hardened; see
-`FOOLPROOF_REPORT.md`).
+and never reports success over a non-printable result — verified across a 143-cell matrix
+of pathological inputs (every entry point × empty/NaN/inside-out/oversize/corrupt/non-mesh/
+real-broken-AI files): 141/141 product cells clean, the only 2 failures being deliberately
+planted tripwires that prove detection works. See `FOOLPROOF_REPORT.md`.
 
 > ℹ️ Name status: `meshprep` verified **available on PyPI** (2026-07-03). Trademark
 > clearance not yet done — do it before the first public release. See `RELEASE_MANIFEST.md`.
@@ -131,18 +133,21 @@ result = meshprep.prep("mypart.glb", profile="generic_fdm", reinforce_load="z")
 print(result["verdict"], "-", result["headline"])   # never raises
 ```
 
-## Roadmap (documented stubs — each module carries its full build plan)
+## Roadmap & feature status (each module carries its full build plan)
 
 | Feature | Stub | One line |
 |---|---|---|
-| **Warp pre-compensation** | `core/warp_precomp.py` | Invert the validated warp field: pre-deform the mesh so the print comes off the bed straight. The flagship. |
+| **Warp pre-compensation** | `core/warp_precomp.py` — stub here; **implemented in the separate pro package** | Invert the validated warp field: pre-deform the mesh so the print comes off the bed straight. The flagship. |
 | **Risk-driven supports** | `core/support_mods.py` — **implemented** | Premortem risk field → schema-verified **SupportEnforcer / SupportBlocker** volumes (PrusaSlicer `Model.cpp`/`3mf.cpp`); the slicing effect (enforcer adds / blocker removes support material) is MEASURED via a CLI proof, not asserted — `meshprep prep --supports` CLI wiring not yet landed, call `support_mods()` directly. |
-| **Stress-mapped multi-material** | `core/multimaterial.py` | The reinforce field assigns **extruders**: rigid on the load path, soft/cheap elsewhere. |
+| **Stress-mapped multi-material** | `core/multimaterial.py` — stub here; **implemented in the separate pro package** (real T0/T1 tool changes measured in gcode) | The reinforce field assigns **extruders**: rigid on the load path, soft/cheap elsewhere. |
 | **Smart split + connectors** | `split.py` (`plan_seams`, `plan_connectors`) — **implemented** | Seams scored (concavity/load/area) into concave creases (EI neck-cut) or CoACD interfaces, exact `manifold3d` boolean cut with a labeled fallback ladder, peg/socket connectors + fit coupon — opt-in via `split_for_bed(mesh, profile, smart=True)`. |
-| **Instant print quotes** | `quote.py` | Bureau intake: verdict + fix certificate + reproducible cost quote, single file or batch. |
+| **Instant print quotes** | `quote.py` — stub here; **implemented in the separate pro package** (byte-reproducible quote body; refuses without a rate card) | Bureau intake: verdict + fix certificate + reproducible cost quote, single file or batch. |
 
-Each stub is callable and returns an honest `{"ok": False, "implemented": False, note}` —
-nothing pretends to work before it does.
+Rows marked **implemented** are real, verified features in this package. The remaining
+public stubs are callable and return an honest `{"ok": False, "implemented": False, note}`
+— nothing pretends to work before it does. Pro-package rows are proprietary
+implementations sold separately; their public stubs (with full build plans) stay here in
+good faith.
 
 ## Status
 
