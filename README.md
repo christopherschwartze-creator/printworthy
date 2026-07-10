@@ -16,6 +16,53 @@ and never reports success over a non-printable result (fuzz-hardened; see
 > ℹ️ Name status: `meshprep` verified **available on PyPI** (2026-07-03). Trademark
 > clearance not yet done — do it before the first public release. See `RELEASE_MANIFEST.md`.
 
+## See it
+
+**Diagnose → source-accurate fix, on a real AI-generated mesh.** A 54,672-face axe from an
+image-to-3D model: the risk heatmap flags the blocking issue, then the fix keeps the surface
+verbatim and certifies exactly what changed.
+
+![Diagnose then certified fix of a real AI-generated axe: risk heatmap on the left flags a FAIL (thinnest wall 0.23 mm, one phantom tunnel); the fix keeps 100% of the surface, 0.000 mm max deviation, watertight, topology preserved.](docs/images/before-after-fix.png)
+
+*Corpus-wide across 66 broken AI meshes: mean **99.4 % of the surface kept**, **0.090 mm**
+mean max-deviation, **100 % watertight**, worst-10 went 25.7 % → 100 % surface kept
+(`ADJUSTMENT_REPORT.md`). Numbers are geometric/comparative estimates, not a print guarantee.*
+
+**Printability risk heatmap** — geometric heuristics (45° overhang + Shape-Diameter thin-wall
++ warp + support-scar), oriented to minimise supports. Not a slicer simulation.
+
+![Six-panel printability risk heatmap of the axe: combined risk, overhang, thin-wall and warp channels, blue = safe, red = high risk.](docs/images/risk-heatmap-ai-axe.png)
+
+**Graded infill / reinforce** — the FEM load path drives a dense-core modifier where stress
+concentrates (red), plain infill elsewhere; exported as a slicer-ready 3MF. Here mean von
+Mises in the reinforced core is **6.64** vs **3.41** in a random-placement control
+(*relative/comparative, uncalibrated* importance field — not a certified safety margin).
+
+![Cantilever beam in grey with a red dense-core infill modifier following the high-stress load path from root to tip.](docs/images/reinforce-dense-core.png)
+
+**Warp prediction** — inherent-strain FEM (reproduces the Timoshenko bimetal closed form
+under refinement). Flat PLA bracket, predicted **0.103 mm** corner lift, distortion ×127 for
+visibility. Labeled **UNCALIBRATED** — a lower bound until the one-coupon calibration.
+
+![Flat bracket shown undeformed on the bed and after release, coloured by predicted off-bed corner lift; annotated as a PLA uncalibrated inherent-strain estimate.](docs/images/warp-prediction.png)
+
+**Fix certificate** — every fix ships an auditable summary: delivered-file SHA-256, surface
+kept %, max deviation, dimensions, and an explicit "what this certificate is **NOT**" block.
+
+![meshprep fix certificate showing SHA-256 of the delivered STL, verdict ready, surface kept 100%, max deviation 0.0 mm, and a disclaimer that it is not a guarantee the part will print.](docs/images/fix-certificate.png)
+
+**Risk-driven supports** — the premortem risk field places **SupportEnforcer** volumes only
+where risk is real (schema-verified against PrusaSlicer; slicing effect MEASURED, not
+asserted — a real overhang gained **+1.27 cm³ / +42.5 %** support material with auto-detect
+off, `S2_FEATURES_REPORT.md`).
+
+![Support-zone view of a comb-like part oriented on the build plate with the risk field driving where supports are enforced.](docs/images/support-zones.png)
+
+**What it handles** — a slice of the real test corpus (AI image-to-3D + CAD parts) that the
+pipeline runs end-to-end; `pf` = printability fraction, `fr` = high-risk area fraction.
+
+![Gallery of sixteen real meshes — brackets, enclosures, hinges, plates — each labelled with face count, printability fraction and extents.](docs/images/corpus-gallery.png)
+
 ## One command, one call
 
 | Entry | Does | Honest scope |
