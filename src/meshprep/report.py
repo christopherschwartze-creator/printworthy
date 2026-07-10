@@ -43,6 +43,9 @@ _HONESTY = {
     "savings": "the slicer's own estimates under the chosen profile",
     "fix": "two-sided Hausdorff deviation certificate vs the source mesh",
     "deformation": "animation / rig-readiness ships separately (autorig build)",
+    "trust": "geometric visibility analysis (back-face + occlusion + "
+             "frustum test) vs the source camera; requires the source image "
+             "and its camera pose -- absent without them, never inferred",
 }
 
 
@@ -320,6 +323,58 @@ def _fix_section(result):
     return lines
 
 
+def _trust_section(result):
+    """Trust map (opt-in; requires an explicit source camera). ADDITIVE and
+    entirely OMITTED when the feature did not run -- an absent camera must
+    never render a fabricated section (mirrors the cavities-triple pattern:
+    computed flag + conditional prose, honesty label always attached)."""
+    tc = (result.get("channels") or {}).get("trust")
+    if not isinstance(tc, dict) or not tc.get("ok"):
+        return []
+    pct = tc.get("frac_invented_pct")
+    pct_s = f"{pct:.1f}" if isinstance(pct, (int, float)) else "?"
+    seen_s = f"{100.0 - pct:.1f}" if isinstance(pct, (int, float)) else "?"
+    lines = ["## Trust map -- what the source camera actually saw", "",
+             f"**{pct_s}% of the surface area is AI-invented** (back-facing, "
+             f"occluded, or outside the source camera's frame); the "
+             f"remaining {seen_s}% is evidence-backed (visible to the "
+             "source photo). Pure geometric visibility analysis (back-face "
+             "+ occlusion + frustum test), not a learned prior; requires "
+             "the source image and its camera pose.", ""]
+    lines.append(
+        f"Trust map: the front of this model is faithful to your source "
+        f"image; the back and interior ({pct_s}% by surface area) were "
+        "invented by the AI generator and made printable, but their "
+        "accuracy cannot be verified against anything. For decorative "
+        "prints this is usually fine. For functional parts, replicas, "
+        "measurement, or any structural/foolproof claim, review the "
+        "invented (orange) regions before relying on them.")
+    lines.append("")
+    if tc.get("carry_mode"):
+        lines.append(f"Label carry through the fix: {tc['carry_mode']} "
+                     "(disclosed; report['trust_carry'] mirrors this -- "
+                     "exact for index-preserving repairs, approximate "
+                     "nearest-face after a global reseal).")
+        lines.append("")
+    n_rf = tc.get("n_repair_filled")
+    if isinstance(n_rf, int) and n_rf > 0:
+        lines.append(f"{n_rf} face(s) were added by the repair step and are "
+                     "labelled repair_filled -- not evidence, and not the "
+                     "AI's original invention, but new geometry from the "
+                     "fixer.")
+        lines.append("")
+    _disc = None
+    for _cn in ("strength", "reinforce"):
+        _ch = (result.get("channels") or {}).get(_cn) or {}
+        if isinstance(_ch, dict) and _ch.get("trust_disclosure"):
+            _disc = _ch["trust_disclosure"]
+            break
+    if _disc:
+        lines.append(f"**{_disc}**")
+        lines.append("")
+    return lines
+
+
 def _resin_section(result):
     rr = (result.get("channels") or {}).get("resin") or {}
     if not rr:
@@ -413,8 +468,8 @@ def build_report(result) -> tuple[str, dict]:
     try:
         lines: list[str] = []
         for section in (_banner, _gate_section, _issues, _numbers, _fix_section,
-                        _resin_section, _savings_section, _provenance,
-                        _files_and_notes):
+                        _trust_section, _resin_section, _savings_section,
+                        _provenance, _files_and_notes):
             try:
                 lines += section(result)
             except Exception as e:
@@ -439,6 +494,7 @@ def build_report(result) -> tuple[str, dict]:
             "facts": result.get("facts", {}),
             "channels": result.get("channels", {}),
             "fix": result.get("fix"),
+            "trust_carry": result.get("trust_carry"),
             "savings": result.get("savings"),
             "files": result.get("files", {}),
             "renders": result.get("renders", []),
@@ -1078,6 +1134,26 @@ def _rv_fields(result):
                              or f["warp"]["ratio_vs_rest"] is None):
         f["warp"]["ran"] = False       # incomplete data: treat as not run
 
+    # trust map (opt-in; GEOMETRIC VISIBILITY vs the source camera). ABSENT
+    # (ran=False) unless a camera was actually supplied -- never fabricated.
+    tch = _rv_get(result, "trust")
+    if not isinstance(tch, dict):
+        tch = (result.get("channels") or {}).get("trust")
+    if not isinstance(tch, dict):
+        tch = {}
+    f["trust"] = {
+        "ran": bool(tch.get("ran", tch.get("ok"))),
+        "frac_invented_pct": _rv_num(tch.get("frac_invented_pct")),
+        "carry_mode": tch.get("carry_mode"),
+        # never a server-local path on the page: sanitise exactly like the
+        # before/after/support renders below (embed or drop, never a dead link)
+        "render_trust": _rv_render_uri(tch.get("render_trust")
+                                       or tch.get("render_path")),
+        "fem_disclosed": bool(tch.get("fem_disclosed")),
+    }
+    if f["trust"]["ran"] and f["trust"]["frac_invented_pct"] is None:
+        f["trust"]["ran"] = False      # incomplete data: treat as not run
+
     du = _rv_get(result, "decimation_used")
     f["decimation_used"] = bool(du)
     f["tri_count_original"] = _rv_get(result, "tri_count_original")
@@ -1460,6 +1536,38 @@ def _rv_warp(f):
     return lines
 
 
+def _rv_trust(f):
+    """Trust map (opt-in; requires the source camera). ABSENT (no section at
+    all, not even a call-to-action) unless a camera was actually supplied —
+    unlike the warp button, this needs data a novice cannot click into
+    existence, so nothing here is ever a fake or an invitation to fake it."""
+    t = f.get("trust") or {}
+    if not t.get("ran"):
+        return []
+    pct = t.get("frac_invented_pct")
+    pct_s = _rv_fmt(pct, 0) if isinstance(pct, (int, float)) else "some"
+    lines = ["## Optional: what the source photo actually saw", "",
+             f"We compared your file against the photo it was generated "
+             f"from. About **{pct_s}%** of the surface (by area) — mostly "
+             "the back and the inside — was never in that photo; the AI "
+             "invented it to make the shape whole and printable. Invented "
+             "areas can't be checked against anything real, so treat them "
+             "as a careful guess, not a fact.", ""]
+    lines += ["For a decorative print, that's usually fine — nobody sees "
+              "the inside. For a functional part, a replica, or anything "
+              "you plan to measure or depend on, look at the invented "
+              "(orange) areas in the picture below before you rely on "
+              "them.", ""]
+    img = t.get("render_trust")
+    if img:
+        lines += [f"![trust map]({img})", ""]
+    if t.get("fem_disclosed"):
+        lines += ["Heads-up: the strength estimate elsewhere in this report "
+                  "also covers some invented area — it is not physically "
+                  "grounded there; treat it as indicative only.", ""]
+    return lines
+
+
 def _rv_fine_print(f):
     lines = ["<details>",
              "<summary><strong>The fine print</strong> (tap to expand)"
@@ -1528,7 +1636,7 @@ def build_review(result, audience="novice") -> str:
         lines.append("")
         if f["verdict"] != "unreadable":
             for sec in (_rv_changed, _rv_size, _rv_pictures, _rv_warn_section,
-                        _rv_shop, _rv_warp):
+                        _rv_shop, _rv_warp, _rv_trust):
                 try:
                     lines += sec(f)
                 except Exception as e:      # a broken section degrades quietly
@@ -1726,6 +1834,20 @@ def review_selfcheck(md) -> list:
                     not in shop_txt:
                 v.append("shop block cavity line missing the do-NOT-auto-fill "
                          "instruction")
+
+            # -- 6b. trust map: header + disclosure prose travel together -----
+            # (mirrors the cavities check above -- a partially-rendered
+            # section is worse than none: it must be all-or-nothing)
+            has_trust_header = ("## Optional: what the source photo actually "
+                                "saw" in md)
+            has_trust_prose = "was never in that photo" in masked
+            if has_trust_header != has_trust_prose:
+                v.append("trust section header and its disclosure prose "
+                         "must appear together")
+            if has_trust_header and not re.search(
+                    r"About \*\*[\d.]+%\*\* of the surface", masked):
+                v.append("trust section missing its invented-percentage "
+                         "figure")
 
             # -- 7. material savings always labelled ---------------------------
             for para in masked.split("\n\n"):

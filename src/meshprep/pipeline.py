@@ -470,7 +470,10 @@ def _review_base() -> dict:
               "decimation_used": False,
               "warp": {"ran": False, "hotspot_plain": None,
                        "ratio_vs_rest": None, "ratio_note": None,
-                       "suggested_shop_phrase": None}})
+                       "suggested_shop_phrase": None},
+              "trust": {"ran": False, "frac_invented_pct": None,
+                        "carry_mode": None, "render_trust": None,
+                        "fem_disclosed": False}})
     return d
 
 
@@ -803,6 +806,23 @@ def _build_review(result, *, work_mesh, checks_before, checks_after,
                                     "layer.",
                     "part_name": "the base corners"})
 
+        # trust map advisory (opt-in; GEOMETRIC VISIBILITY vs the source
+        # camera -- ABSENT unless trust_camera was supplied; never faked)
+        tch = (result.get("channels") or {}).get("trust")
+        if isinstance(tch, dict) and tch.get("ok"):
+            fem_disclosed = bool(
+                ((result.get("channels") or {}).get("strength") or {})
+                .get("trust_disclosure")
+                or ((result.get("channels") or {}).get("reinforce") or {})
+                .get("trust_disclosure"))
+            d["trust"] = {
+                "ran": True,
+                "frac_invented_pct": tch.get("frac_invented_pct"),
+                "carry_mode": tch.get("carry_mode"),
+                "render_trust": tch.get("render_path"),
+                "fem_disclosed": fem_disclosed,
+            }
+
         d["warnings"] = warns
         d["blocking_count"] = sum(1 for w in warns
                                   if w["severity"] == "blocking")
@@ -869,6 +889,7 @@ def prep(path_or_mesh, *, profile="generic_fdm", material=None, mode=None,
          preset=None,
          fix=True, orient=True, reinforce_load=None, reinforce_force_n=100.0,
          fem_warp=False, fem_strength=False, retopo=False, supports=False,
+         trust_camera=None,
          out_dir=None, print_mm=None, nozzle_mm=None, max_faces=None,
          assume_unit=None, check_only=False, slicer_savings=True,
          verbose=False) -> dict:
@@ -900,6 +921,29 @@ def prep(path_or_mesh, *, profile="generic_fdm", material=None, mode=None,
                        Heuristic triage, not a guarantee any support was
                        required; see the 'supports' channel note. Never blocks
                        the verdict.
+    trust_camera     : opt-in GEOMETRIC VISIBILITY ("trust") map (core/
+                       trust_map.py; vendored+attributed from Applied/Quasi/
+                       provenance/trackA -- never imported from there at
+                       runtime). Pass a trust_map.Camera (or an equivalent
+                       dict of position/forward/up/fov_y_deg/resolution)
+                       describing the SOURCE camera that produced this mesh's
+                       generator image, in the mesh's OWN as-uploaded
+                       coordinate frame (computed BEFORE meshprep's internal
+                       print-size rescale, so a possibly-guessed mm scale
+                       never distorts the camera geometry). Every face is
+                       labelled evidence_backed (the source photo actually
+                       showed it) or ai_invented (back-facing / occluded /
+                       outside the frame -- the AI made it up to seal the
+                       shape); faces the fixer adds are repair_filled. This
+                       is geometric visibility analysis and REQUIRES the
+                       source camera -- with no camera (the default) the
+                       feature is simply ABSENT from every report surface,
+                       never inferred or faked. Pose ESTIMATION from a bare
+                       image (no explicit camera) is NOT wired into this
+                       entry point yet: core.trust_map ships it experimental
+                       and gated; the image-upload input surface to reach it
+                       is a documented residual (see trust_map.py module
+                       docstring / the design's INPUT-CONTRACT note).
     out_dir          : where the package lands (default: a fresh temp dir).
     print_mm         : longest side of the printed part, mm. Default: keep the
                        mesh's own size if it looks like mm (5-500), else 60 mm.
@@ -923,7 +967,8 @@ def prep(path_or_mesh, *, profile="generic_fdm", material=None, mode=None,
                      reinforce_load=reinforce_load,
                      reinforce_force_n=reinforce_force_n, fem_warp=fem_warp,
                      fem_strength=fem_strength, retopo=retopo,
-                     supports=supports, out_dir=out_dir,
+                     supports=supports, trust_camera=trust_camera,
+                     out_dir=out_dir,
                      print_mm=print_mm, nozzle_mm=nozzle_mm,
                      max_faces=max_faces, assume_unit=assume_unit,
                      check_only=check_only,
@@ -947,7 +992,7 @@ def prep(path_or_mesh, *, profile="generic_fdm", material=None, mode=None,
 
 def _prep(path_or_mesh, *, profile, material, mode, preset, fix, orient,
           reinforce_load, reinforce_force_n, fem_warp, fem_strength, retopo,
-          supports=False,
+          supports=False, trust_camera=None,
           out_dir, print_mm, nozzle_mm, max_faces, assume_unit, check_only,
           slicer_savings, verbose):
     import numpy as np
@@ -1136,6 +1181,51 @@ def _prep(path_or_mesh, *, profile, material, mode, preset, fix, orient,
                          "analysis processing, not by your model")
     result["source_watertight"] = source_watertight
 
+    # -- 1d. trust map (opt-in; requires an EXPLICIT source camera) -----------
+    # GEOMETRIC VISIBILITY analysis (core.trust_map -- vendored+attributed
+    # from Applied/Quasi/provenance/trackA; NEVER imported from there at
+    # runtime): which faces the SOURCE CAMERA that produced this asset's
+    # generator image could actually have seen. Computed HERE, on the
+    # as-uploaded/welded mesh, BEFORE meshprep's own print-size rescale below
+    # -- so `trust_camera` stays in the mesh's own native coordinate frame,
+    # never distorted by an internal (possibly-guessed) mm scale. Imported
+    # DEFENSIVELY: this module may be absent from some builds. No camera OR
+    # no module -> the feature is simply ABSENT (never faked): no channel,
+    # no render, nothing fabricated anywhere in the report.
+    trust_mod = None
+    trust_labels0 = None
+    trust_confidence0 = None
+    if trust_camera is not None:
+        try:
+            from .core import trust_map as trust_mod
+        except Exception:
+            trust_mod = None
+        if trust_mod is None or not hasattr(trust_mod, "trust_map"):
+            notes.append("trust map requested (trust_camera given) but the "
+                         "trust_map module is unavailable in this build -- "
+                         "the feature is ABSENT, not faked")
+            trust_mod = None
+        else:
+            def _trust_compute():
+                return trust_mod.trust_map(mesh, camera=trust_camera)
+            tr0 = stages.run(
+                "trust-map", _trust_compute,
+                label="geometric visibility vs the source camera (back-face "
+                      "+ occlusion + frustum); requires the source camera")
+            if isinstance(tr0, dict) and tr0.get("ok"):
+                trust_labels0 = tr0.get("face_labels")
+                trust_confidence0 = tr0.get("confidence")
+                if trust_labels0 is None:
+                    trust_mod = None
+                elif tr0.get("occlusion_deferred"):
+                    notes.append("trust map: occlusion pass deferred (low "
+                                 "RAM or no embree) -- labels reflect "
+                                 "back-facing + frustum only for this run")
+            else:
+                notes.append("trust map: " + str((tr0 or {}).get("note")
+                             or "unavailable"))
+                trust_mod = None
+
     # -- 2. units / print size (UNIT-INGEST CONTRACT; never silently rescale) --
     unit_scan = scan_units(mesh)
     result["unit_scan"] = unit_scan
@@ -1276,6 +1366,88 @@ def _prep(path_or_mesh, *, profile, material, mode, preset, fix, orient,
         if isinstance(result.get("fix"), dict):
             result["fix"]["internal_shells"] = ish
 
+    # -- 4c. trust map: carry labels through the fix ---------------------------
+    # `work_mesh` here is the fixed mesh (or, if fix was off/rolled back,
+    # `mesh_mm` itself unchanged) -- core.trust_map.transfer_labels degrades
+    # to an EXACT passthrough when the two meshes coincide, so this is safe
+    # to call unconditionally whenever a trust map was computed above.
+    trust_result = None
+    if trust_labels0 is not None and not _over_budget(
+            "trust-carry", "trust label transfer through the fix"):
+        def _trust_carry():
+            # Pure-reorder short-circuit: `_cheap_repair` (run on EVERY fix,
+            # even a mesh that needed no repair at all) merges/re-sorts faces
+            # via unique_faces/nondegenerate_faces -- the face SET is often
+            # byte-identical, only the INDEX order changes (zero geometric
+            # movement). transfer_labels(mode="auto") correctly detects that
+            # as "not index-preserving" and falls back to its conservative
+            # reseal/seam-bias path -- appropriate for a REAL reseal, but on
+            # a coarse mesh where nearly every face borders a differently
+            # labelled neighbour, that bias saturates toward all-invented
+            # even though nothing actually moved. So: try to verify an EXACT
+            # bijection first (every new-face centroid coincides with some
+            # original face to within a tiny epsilon) and, if so, use the
+            # EXACT masked-index carry (core.trust_map.transfer_labels_masked,
+            # REGIME C) instead of the approximate reseal path. Any real
+            # repair (faces added/moved/removed) fails this check and falls
+            # through to the normal conservative "auto" transfer unchanged.
+            labels = conf = None
+            carry_mode = None
+            try:
+                if len(work_mesh.faces) == len(mesh_mm.faces):
+                    _, _dist, _tid = mesh_mm.nearest.on_surface(
+                        np.asarray(work_mesh.triangles_center, float))
+                    _scale = float(np.linalg.norm(mesh_mm.extents)) + 1e-9
+                    if float(np.max(_dist)) < 1e-6 * _scale:
+                        xm = trust_mod.transfer_labels_masked(
+                            trust_labels0, np.asarray(_tid, np.int64),
+                            orig_confidence=trust_confidence0)
+                        labels, conf = xm.get("labels"), xm.get("confidence")
+                        carry_mode = ("no geometric change vs. the analysed "
+                                      "mesh (identity, or face order only) "
+                                      "-- " + str(xm.get("carry_mode")))
+            except Exception:
+                labels = conf = None            # fall through to "auto" below
+            if labels is None:
+                xf = trust_mod.transfer_labels(
+                    mesh_mm, trust_labels0, work_mesh,
+                    orig_confidence=trust_confidence0, mode="auto")
+                labels, conf, carry_mode = (xf.get("labels"), xf.get("confidence"),
+                                            xf.get("carry_mode"))
+            areas = np.asarray(work_mesh.area_faces, float)
+            inv = (labels == trust_mod.AI_INVENTED)
+            tot = float(areas.sum()) or 1e-12
+            frac = float(areas[inv].sum() / tot) if labels is not None else None
+            return {"labels": labels, "confidence": conf,
+                    "carry_mode": carry_mode, "frac_invented": frac}
+        trust_result = stages.run(
+            "trust-carry", _trust_carry,
+            label="carry trust labels through the fix (index-exact for "
+                  "local patches; nearest-face, conservatively biased, "
+                  "after a global reseal)")
+    if (isinstance(trust_result, dict) and trust_result.get("labels")
+            is not None):
+        _tlabels = trust_result["labels"]
+        result["trust_carry"] = trust_result.get("carry_mode")
+        result["channels"]["trust"] = {
+            "ok": True, "mode": "explicit",
+            "frac_invented": (round(float(trust_result["frac_invented"]), 4)
+                              if trust_result.get("frac_invented") is not None
+                              else None),
+            "frac_invented_pct": (round(float(trust_result["frac_invented"])
+                                        * 100.0, 1)
+                                  if trust_result.get("frac_invented")
+                                  is not None else None),
+            "carry_mode": trust_result.get("carry_mode"),
+            "n_faces": int(len(_tlabels)),
+            "n_evidence_backed": int((_tlabels
+                                      == trust_mod.EVIDENCE_BACKED).sum()),
+            "n_ai_invented": int((_tlabels == trust_mod.AI_INVENTED).sum()),
+            "n_repair_filled": int((_tlabels
+                                    == trust_mod.REPAIR_FILLED).sum()),
+            "note": trust_mod.TRUST_CAPTION,
+        }
+
     # -- 5. orient ------------------------------------------------------------
     orientation_applied = False
     orient_budget_skipped = False
@@ -1361,6 +1533,37 @@ def _prep(path_or_mesh, *, profile, material, mode, preset, fix, orient,
             label="where supports will touch, at the shipped orientation")
         if support_render and not os.path.exists(support_render):
             support_render = None
+
+    # -- 5b2. trust overlay render (opt-in; "as shipped" -- after orient) -----
+    # `work_mesh` at this point is the final (fixed + oriented) deliverable;
+    # per-face labels were computed on the SAME face order (orient is a rigid
+    # transform, it never re-indexes faces), so the label array from 4c still
+    # lines up exactly. Never blocks the verdict; a render failure just omits
+    # the picture (channel numbers above are unaffected).
+    trust_render_path = None
+    if (trust_mod is not None and isinstance(result["channels"].get("trust"),
+                                             dict) and not check_only
+            and not _over_budget("trust-render", "trust overlay render "
+                                 "(green=seen / orange=invented / "
+                                 "blue=repaired)")):
+        def _trust_render():
+            png = os.path.join(out_dir, "trust.png")
+            rr = trust_mod.render_trust_overlay(
+                work_mesh,
+                {"ok": True, "face_labels": _tlabels,
+                 "confidence": trust_result.get("confidence"),
+                 "frac_invented": result["channels"]["trust"].get(
+                     "frac_invented")},
+                png)
+            return rr
+        rr = stages.run(
+            "trust-render", _trust_render,
+            label="green=seen / orange=invented / blue=repaired overlay, at "
+                  "the shipped orientation")
+        if isinstance(rr, dict) and rr.get("ok") and rr.get("path") \
+                and os.path.exists(rr["path"]):
+            trust_render_path = rr["path"]
+            result["channels"]["trust"]["render_path"] = trust_render_path
 
     # -- 5c. warp FEM under a preset element cap (opt-in; ESTIMATE) -----------
     # Runs AFTER orient so the prediction is at the orientation that ships.
@@ -1478,6 +1681,27 @@ def _prep(path_or_mesh, *, profile, material, mode, preset, fix, orient,
                 "load_case": lc}
             if rr.get("ok") and rr.get("out_3mf"):
                 result["files"]["prep_3mf"] = rr["out_3mf"]
+
+    # -- 6b. trust-aware FEM disclosure -----------------------------------------
+    # NEVER silently masks the physics: there is no per-voxel occupancy weight
+    # to flip (a single uniform-material grid), so a trust map cannot change
+    # FOS numerics -- it can only ADD an honest caveat alongside them. Uses the
+    # AREA-weighted fraction already computed above (we do not compute a
+    # separate volume-occupancy fraction here, so the wording says "surface
+    # area", never "volume", to stay literally accurate to what was measured).
+    _tch = result["channels"].get("trust")
+    if isinstance(_tch, dict) and isinstance(_tch.get("frac_invented_pct"),
+                                             (int, float)):
+        _tdisc = (f"Structural estimate rests on invented geometry: "
+                  f"{_tch['frac_invented_pct']:.0f}% of the surface area is "
+                  "AI-invented (the source image never showed it). "
+                  "Factor-of-safety figures covering those regions are not "
+                  "physically grounded -- treat as indicative only, not a "
+                  "guarantee.")
+        for _cn in ("strength", "reinforce"):
+            _cd = result["channels"].get(_cn)
+            if isinstance(_cd, dict) and "trust_disclosure" not in _cd:
+                _cd["trust_disclosure"] = _tdisc
 
     # -- 7. bed fit ---------------------------------------------------------------
     fit = None
@@ -1613,6 +1837,8 @@ def _prep(path_or_mesh, *, profile, material, mode, preset, fix, orient,
             _rend.append(extra)
     if support_render and support_render not in _rend:
         _rend.append(support_render)
+    if trust_render_path and trust_render_path not in _rend:
+        _rend.append(trust_render_path)
     result["renders"] = _rend
     # plain captions keyed by render-file stem (the UI shows these instead of
     # raw filename jargon like 'premortem'/'traps')
@@ -1624,6 +1850,8 @@ def _prep(path_or_mesh, *, profile, material, mode, preset, fix, orient,
         "orient": "Strongest vs weakest build orientation (comparative)",
         "support": "Where supports will touch (applied orientation)",
     }
+    if trust_render_path and trust_mod is not None:
+        result["render_captions"]["trust"] = trust_mod.TRUST_CAPTION
 
     # honest one-line note when the soft budget clipped optional stages
     if stages.budget_hit and budget_s:
