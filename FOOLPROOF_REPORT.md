@@ -162,3 +162,26 @@ _Honesty discipline held throughout: no HEURISTIC / geometric / uncalibrated / R
    ERROR if prep.stl is not on disk at package time — catches mid-run permission loss/disk
    full). Verified with a real NTFS ACL write-deny: ERROR + plain headline, no raise;
    writable control still PASS with 8 artifacts. py_compile clean.
+
+---
+
+## FINAL: full-matrix sweep COMPLETE (2026-07-10)
+
+The deferred sweep tail ran to completion on a quiet box. Merged result across
+the ENTIRE 143-cell matrix (every entry point x every pathological input,
+current code including supports wiring + smart split + space preset):
+
+- **141/141 product cells ok** — 0 crashes, 0 silent-wrongs, 0 hangs, 0 memory
+  hogs. The only 2 non-ok cells are the PLANTED selftest tripwires
+  (deliberate crash + deliberate inside-out ship), which the harness caught —
+  proving detection works.
+- `aborted_low_ram: false` — no coverage gap remains.
+- Max peak RSS 1538 MB = the planted memory hog at its kill point; real
+  product cells peaked 96–558 MB.
+- The four baseline-era failures (resin hang on the over-guard file,
+  cli_reinforce on point clouds / real AI meshes / missing paths) are all ok.
+
+This closes the last "unproven" line in this report. The never-crash /
+never-silent-wrong contract is verified across the full matrix on shipped
+code. Remaining physical-world validations (real prints, real users, real
+2 vCPU Space timings) are inherently outside this harness.
