@@ -47,6 +47,9 @@ _GALLERY_CAP = {
     "orient": "Suggested printing direction",
     "support": "Where supports will touch (in the applied printing "
                "position)",
+    "trust": "What the source photo actually saw — green was visible to "
+             "your camera, orange the AI invented (unverifiable); requires "
+             "your source image + pose",
     # legacy stems (older pipeline versions)
     "printability": "Where printing is risky (red = needs supports, may "
                     "scar, or is too thin)",

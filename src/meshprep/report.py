@@ -613,7 +613,12 @@ def _rv_fmt(x, nd=2):
         return "?"
     if 0 < abs(xf) < 0.01:
         nd = max(nd, 3)
-    s = f"{xf:.{nd}f}".rstrip("0").rstrip(".")
+    s = f"{xf:.{nd}f}"
+    # strip trailing zeros only AFTER a decimal point; f"{60.0:.0f}" == "60" has none,
+    # and a blind rstrip("0") would turn 60 -> "6" and 100 -> "1" (exact multiples of
+    # ten at nd=0 are common: support %, savings %, invented %).
+    if "." in s:
+        s = s.rstrip("0").rstrip(".")
     return s or "0"
 
 
