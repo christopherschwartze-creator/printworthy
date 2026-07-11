@@ -6,6 +6,27 @@ or takes money. Do them in this order; each links to its detailed guide.
 
 **Total time to a live free tier: ~1–2 hours. To a sellable pro tier: +2–4 hours.**
 
+## ⚠️ Repo layout — read this first (it has already confused one search)
+
+There are **TWO separate repos in sibling folders**:
+
+```
+C:\Users\mecht\Project_EI\3DEI\meshprep\       <- PUBLIC (MIT). This one gets pushed to GitHub.
+C:\Users\mecht\Project_EI\3DEI\meshprep_pro\   <- PROPRIETARY. Its OWN git repo. NEVER pushed.
+```
+
+`meshprep_pro` is **deliberately absent** from the public folder and from the
+public repo's git history — if it were inside `meshprep/`, the Phase-A GitHub
+push would open-source the paid product. So: looking for it inside this repo
+correctly finds nothing. Every `meshprep_pro/...` reference below means the
+**absolute sibling path** `C:\Users\mecht\Project_EI\3DEI\meshprep_pro\...`.
+
+**Backup warning:** `meshprep_pro` currently exists ONLY on this machine
+(local git, no remote). Before or during Phase A, give it an off-machine
+copy: a **private** GitHub repo is fine (private ≠ published), or include
+`3DEI\meshprep_pro` in the rclone backup set. The public repo gets a remote
+in step A2 anyway; the pro repo should not be the only unbacked asset.
+
 ---
 
 ## Phase A — the free tier goes live (~1–2 h)
@@ -28,18 +49,23 @@ or takes money. Do them in this order; each links to its detailed guide.
 ## Phase B — the paid tier (~2–4 h, can be days later)
 
 - [ ] **B1. License terms** (the one real-world dependency): have the
-      placeholder LICENSE in `meshprep_pro/` reviewed/replaced before any
-      sale. Until then everything can run in test mode.
+      placeholder LICENSE at
+      `C:\Users\mecht\Project_EI\3DEI\meshprep_pro\LICENSE` reviewed/replaced
+      before any sale. Until then everything can run in test mode.
 - [ ] **B2. Lemon Squeezy store** (1 h): Part 2 of
       `PUBLISH_TO_HUGGINGFACE.md` — 3 products (seat ~$79 / credits ~$10 /
       bureau sub ~$49) in **test mode**; buy each with the test card.
-- [ ] **B3. Private wheel repo + secrets** (30 min): upload the pro wheel +
-      vendor binary to a *private* HF repo; set `HF_TOKEN` + `LS_API_KEY`
-      secrets. **Never put pro files in a public Space repo.**
+- [ ] **B3. Private wheel repo + secrets** (30 min): build the pro wheel
+      (`pip wheel C:\Users\mecht\Project_EI\3DEI\meshprep_pro -w <dir> --no-deps`)
+      and upload it + the vendor binary
+      (`C:\Users\mecht\Project_EI\3DEI\meshprep_pro\vendor\quadriflow`) to a
+      *private* HF repo; set `HF_TOKEN` + `LS_API_KEY` secrets (details in
+      DEPLOY_PRO.md, B4). **Never put pro files in a public Space repo.**
 - [ ] **B4. Deploy the Pro Space PRIVATE + full test-mode purchase** (1 h):
-      `meshprep_pro/DEPLOY_PRO.md` — buy → key → job → credit decrements →
-      certificate downloads. This is the one thing the local mock could not
-      prove.
+      guide at `C:\Users\mecht\Project_EI\3DEI\meshprep_pro\DEPLOY_PRO.md`
+      (Space files in `...\meshprep_pro\space_pro\`) — buy → key → job →
+      credit decrements → certificate downloads. This is the one thing the
+      local mock could not prove.
 - [ ] **B5. Go live**: LS out of test mode, Pro Space public.
 
 ## Phase C — announce (an evening, then respond fast)
