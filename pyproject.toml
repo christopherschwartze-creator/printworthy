@@ -59,7 +59,7 @@ dev = ["pytest>=7.0", "ruff>=0.5", "build", "twine"]
 meshprep = "meshprep.cli:main"   # meshprep <check|fix|prep|reinforce|calibrate|app> ...
 
 [project.urls]
-Homepage = "https://example.com/meshprep"   # set before publishing
+Homepage = "https://github.com/christopherschwartze-creator/meshprep"
 
 [tool.setuptools.packages.find]
 where = ["src"]

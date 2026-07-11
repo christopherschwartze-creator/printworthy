@@ -39,5 +39,4 @@ belongs to your printer or print shop.
 for training — nothing is uploaded anywhere except this Space.
 Limits: 25 MB / 3M triangles.
 
-Source: https://github.com/REPLACE-ME/meshprep *(placeholder — set before
-publishing)*.
+Source: https://github.com/christopherschwartze-creator/meshprep

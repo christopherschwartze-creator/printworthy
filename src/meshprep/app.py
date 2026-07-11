@@ -85,8 +85,9 @@ PRIVACY = ("<small>**Privacy:** your file is processed in memory and is not "
            "(the review says so when that happens).</small>")
 
 FOOTER = ("<small>Open source — "
-          "[meshprep on GitHub](https://github.com/REPLACE-ME/meshprep) "
-          "*(link placeholder — set before publishing)*.</small>")
+          "[meshprep on GitHub]"
+          "(https://github.com/christopherschwartze-creator/meshprep)"
+          ".</small>")
 
 
 # ---------------------------------------------------------------------------

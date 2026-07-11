@@ -112,7 +112,7 @@ for your exact printer + filament.
 source. From a local clone (works today):
 
 ```bash
-git clone https://github.com/<your-username>/meshprep.git
+git clone https://github.com/christopherschwartze-creator/meshprep.git
 cd meshprep
 pip install .                       # core (permissive only)
 pip install ".[fast]"               # + faster decimation
@@ -122,12 +122,11 @@ pip install ".[fast]"               # + faster decimation
 Or, once the repo is public, install straight from GitHub without cloning:
 
 ```bash
-pip install "git+https://github.com/<your-username>/meshprep.git"
+pip install "git+https://github.com/christopherschwartze-creator/meshprep.git"
 ```
 
-Replace `<your-username>` with the account the repo is pushed to (launch
-checklist step A2). The Hugging Face Space bundles its own wheel, so users of
-the hosted demo install nothing.
+The Hugging Face Space bundles its own wheel, so users of the hosted demo
+install nothing.
 
 ## Quickstart
 
