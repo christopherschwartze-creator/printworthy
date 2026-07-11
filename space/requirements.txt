@@ -25,4 +25,4 @@ embreex==4.4.0
 # Rebuild after any package change with:
 #   pip wheel C:/Users/mecht/Project_EI/3DEI/meshprep -w space/wheels --no-deps
 # and update the filename below if the version changes.
-./wheels/meshprep-0.1.0.dev0-py3-none-any.whl
+./wheels/meshprep-0.1.0a1-py3-none-any.whl

@@ -15,8 +15,12 @@ of pathological inputs (every entry point × empty/NaN/inside-out/oversize/corru
 real-broken-AI files): 141/141 product cells clean, the only 2 failures being deliberately
 planted tripwires that prove detection works. See `FOOLPROOF_REPORT.md`.
 
-> ℹ️ Name status: `meshprep` verified **available on PyPI** (2026-07-03). Trademark
-> clearance not yet done — do it before the first public release. See `RELEASE_MANIFEST.md`.
+> ℹ️ Name status: the `meshprep` package name is **unclaimed on PyPI** (verified
+> 2026-07-03) — but the package is **not published there**; install from source.
+> Trademark is **not cleared**: preliminary name research (PyPI / GitHub / HF /
+> web) is written up in `NAME_RESEARCH.md` — that is research to hand to counsel,
+> **not** a clearance. Get counsel sign-off before the first public release. See
+> also `RELEASE_MANIFEST.md`.
 
 ## See it
 
@@ -104,11 +108,26 @@ for your exact printer + filament.
 
 ## Install
 
+`meshprep` is **not published to PyPI** — it is open-source and installed from
+source. From a local clone (works today):
+
 ```bash
-pip install meshprep                # core (permissive only)
-pip install "meshprep[fast]"        # + faster decimation
+git clone https://github.com/<your-username>/meshprep.git
+cd meshprep
+pip install .                       # core (permissive only)
+pip install ".[fast]"               # + faster decimation
 # retopo-pyqf extra is LGPL-flagged — read THIRD_PARTY_NOTICES.md first
 ```
+
+Or, once the repo is public, install straight from GitHub without cloning:
+
+```bash
+pip install "git+https://github.com/<your-username>/meshprep.git"
+```
+
+Replace `<your-username>` with the account the repo is pushed to (launch
+checklist step A2). The Hugging Face Space bundles its own wheel, so users of
+the hosted demo install nothing.
 
 ## Quickstart
 

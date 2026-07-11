@@ -3,7 +3,15 @@
 All notable changes to **meshprep** are recorded here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
 
-## [0.1.0.dev0] — unreleased (launch-ready)
+## [0.1.0a1] — unreleased (launch-ready; alpha, not yet published)
+
+> Version note: bumped off the `0.1.0.dev0` development marker to the alpha
+> pre-release `0.1.0a1`. Still **not published to PyPI** — install from source
+> (see README). "Alpha" (not `rc`/`1.0`) is deliberate: the code is
+> feature-complete and fuzz-hardened, but the first real-hardware Space deploy
+> and the physical print validations (warp coupon, load test) are still
+> unwalked. Promote to `0.1.0` at the actual public release if desired.
+
 
 The complete free tier: one-call prep pipeline, hardened, packaged for
 Hugging Face Spaces, with demo assets and launch collateral. A separate

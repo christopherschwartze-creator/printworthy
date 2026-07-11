@@ -95,7 +95,7 @@ You are uploading the **contents** of `C:\Users\mecht\Project_EI\3DEI\meshprep\s
 README.md
 app.py
 requirements.txt
-wheels/meshprep-0.1.0.dev0-py3-none-any.whl
+wheels/meshprep-0.1.0a1-py3-none-any.whl
 ```
 
 (NOT `DEPLOY.md`/`check_wheel.py` — harmless if included, but they're operator

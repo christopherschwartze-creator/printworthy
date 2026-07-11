@@ -9,8 +9,9 @@ Deliberately EXCLUDED from this UI (the code paths stay in the package, use
 the CLI / API for them): reinforce / graded-infill 3MF, quad retopo, slicer
 savings, resin mode, autorig.
 
-Gradio is an optional extra (``pip install meshprep[app]``); this module
-imports clean without it and :func:`build_demo` raises clear guidance.
+Gradio is an optional extra (``pip install gradio``, or the ``[app]`` extra
+if meshprep is installed from PyPI); this module imports clean without it and
+:func:`build_demo` raises clear guidance.
 
 Run:  meshprep app            (or python -m meshprep.app)
 """
@@ -376,8 +377,8 @@ def build_demo():
         import gradio as gr
     except ImportError as e:
         raise RuntimeError(
-            "The meshprep app needs gradio. Install the extra: "
-            "`pip install meshprep[app]` (or `pip install gradio`).") from e
+            "The meshprep app needs gradio. Install it: "
+            "`pip install gradio`.") from e
 
     from .profiles import PRINTER_PROFILES
     printers = _fdm_profiles(PRINTER_PROFILES)

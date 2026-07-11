@@ -13,7 +13,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "meshprep"
-version = "0.1.0.dev0"
+version = "0.1.0a1"
 description = "Drop a mesh, get a print-ready package + a plain-English report: printability pre-flight + source-accurate repair + build orientation + reduced-order print-FEM (warp/strength) + graded-infill 3MF + quad retopo. Permissive, geometric/FEM — not a slicer, not artist-grade. (The animation/auto-rig build ships separately.)"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"

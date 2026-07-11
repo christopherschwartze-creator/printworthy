@@ -234,7 +234,7 @@ def main(argv=None):
             return app_mod.main(port=a.port, share=a.share)
         except Exception as e:                      # never-raise to the user
             say(f"Could not launch the app ({type(e).__name__}: {e}). "
-                "Install the extra: pip install meshprep[app].")
+                "Install gradio: pip install gradio.")
             return 2
 
     from .pipeline import prep

@@ -19,7 +19,7 @@ space/
   app.py             <- entry point; imports meshprep.app.build_demo()
   requirements.txt   <- PINNED deps + the local meshprep wheel
   wheels/
-    meshprep-0.1.0.dev0-py3-none-any.whl
+    meshprep-0.1.0a1-py3-none-any.whl
 ```
 
 meshprep is not on PyPI; it rides along as the wheel in `wheels/`,
