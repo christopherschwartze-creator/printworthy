@@ -5,36 +5,25 @@ is yours because it is outward-facing: it creates accounts, publishes code,
 or takes money. Do them in this order; each links to its detailed guide.
 
 **Time to a live FREE tier: ~1–2 hours of hands-on work.** The PAID tier is
-**not** a fixed time box. It is gated on two things outside this repo:
-(1) **counsel-reviewed license terms** — a real-world dependency whose lead
-time is counsel's, not yours (could be days to weeks), and (2) the separate,
-**separately-owned** `meshprep_pro` repo being ready (see the repo-layout note
-below). Budget the free tier as an afternoon; treat the paid tier as "whenever
-counsel *and* the pro track are both ready," not "+N hours."
+**not** a fixed time box: it is gated on **counsel-reviewed license terms** — a
+real-world dependency whose lead time is counsel's, not yours (could be days to
+weeks) — and on the pro build being deploy-ready. Budget the free tier as an
+afternoon; treat the paid tier as "whenever counsel signs off," not "+N hours."
 
 ## ⚠️ Repo layout — read this first (it has already confused one search)
 
 There are **TWO separate repos in sibling folders**:
 
 ```
-C:\Users\mecht\Project_EI\3DEI\meshprep\       <- PUBLIC (MIT). This one gets pushed to GitHub. THIS checklist lives here.
-C:\Users\mecht\Project_EI\3DEI\meshprep_pro\   <- PROPRIETARY, SEPARATELY OWNED. Its OWN git repo. NEVER pushed to the public remote.
+C:\Users\mecht\Project_EI\3DEI\meshprep\       <- PUBLIC (MIT). This one gets pushed to GitHub.
+C:\Users\mecht\Project_EI\3DEI\meshprep_pro\   <- PROPRIETARY. Its OWN git repo. NEVER pushed.
 ```
 
 `meshprep_pro` is **deliberately absent** from the public folder and from the
 public repo's git history — if it were inside `meshprep/`, the Phase-A GitHub
 push would open-source the paid product. So: looking for it inside this repo
-correctly finds nothing. It **does** exist on this machine as the sibling path
-above (its own `.git`, own `pyproject.toml`, own LICENSE). Every
-`meshprep_pro/...` reference in **Phase B** means the **absolute sibling path**
-`C:\Users\mecht\Project_EI\3DEI\meshprep_pro\...`.
-
-> **Phase B is an external dependency for this launch-prep.** The pro repo is
-> developed and owned on a separate track (someone other than the public-repo
-> prep is working in it). Nothing in the public-repo launch prep edits, builds,
-> or ships pro files. Treat Phase B as "coordinate with the pro track when both
-> it and counsel are ready" — it is intentionally *not* something to rush in
-> parallel with the free-tier launch.
+correctly finds nothing. Every `meshprep_pro/...` reference below means the
+**absolute sibling path** `C:\Users\mecht\Project_EI\3DEI\meshprep_pro\...`.
 
 **Backup warning:** `meshprep_pro` currently exists ONLY on this machine
 (local git, no remote). Before or during Phase A, give it an off-machine
@@ -87,11 +76,10 @@ in step A2 anyway; the pro repo should not be the only unbacked asset.
       exceeds ~5 min, pause and report back before going public.
 - [ ] **A5. Flip public** (30 s): Step 7. The free tier is now live.
 
-## Phase B — the paid tier (EXTERNAL DEPENDENCY — see repo-layout note; not a fixed time box)
+## Phase B — the paid tier (counsel-gated; runs in test mode until B5, can be days later)
 
-> Blocked on: (a) counsel-reviewed license terms, (b) the separately-owned
-> `meshprep_pro` track being deploy-ready. Everything below runs in **test
-> mode** (no real money) until B5. Do not start B5 until both blockers clear.
+> Everything below runs in **test mode** (no real money) until B5, which is
+> gated on B1 (counsel-reviewed license terms). Do not flip to live until then.
 
 - [ ] **B1. License terms** (the one real-world dependency): have the
       placeholder LICENSE at
