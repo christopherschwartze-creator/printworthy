@@ -30,7 +30,7 @@ Pick one:
 - **Option 1 — create the GitHub repo first** (recommended if you want the
   open-core funnel working from day one): on github.com → New repository →
   name `printworthy`, public, no README (we have one) → then from
-  `C:\Users\mecht\Project_EI\3DEI\printworthy`:
+  `C:\Users\mecht\Project_EI\3DEI\meshprep`:
   ```
   git remote add origin https://github.com/<your-username>/printworthy.git
   git push -u origin main
@@ -50,13 +50,13 @@ file inside the `space/wheels/` folder. If you changed ANY package file since
 the wheel was built (including the footer edit above), rebuild:
 
 ```
-pip wheel C:/Users/mecht/Project_EI/3DEI/printworthy -w C:/Users/mecht/Project_EI/3DEI/printworthy/space/wheels --no-deps
+pip wheel C:/Users/mecht/Project_EI/3DEI/meshprep -w C:/Users/mecht/Project_EI/3DEI/meshprep/space/wheels --no-deps
 ```
 
 Then run the freshness guard — **mandatory before every deploy**:
 
 ```
-python C:/Users/mecht/Project_EI/3DEI/printworthy/space/check_wheel.py
+python C:/Users/mecht/Project_EI/3DEI/meshprep/space/check_wheel.py
 ```
 
 - **PASS** → continue.
@@ -89,7 +89,7 @@ python C:/Users/mecht/Project_EI/3DEI/printworthy/space/check_wheel.py
 
 ## Step 4 — Upload the files (5 min, no git needed)
 
-You are uploading the **contents** of `C:\Users\mecht\Project_EI\3DEI\printworthy\space\`:
+You are uploading the **contents** of `C:\Users\mecht\Project_EI\3DEI\meshprep\space\`:
 
 ```
 README.md

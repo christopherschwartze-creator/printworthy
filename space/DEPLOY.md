@@ -27,7 +27,7 @@ referenced from `requirements.txt` as a relative path. After ANY change to
 the package, rebuild it before pushing:
 
 ```
-pip wheel C:/Users/mecht/Project_EI/3DEI/printworthy -w C:/Users/mecht/Project_EI/3DEI/printworthy/space/wheels --no-deps
+pip wheel C:/Users/mecht/Project_EI/3DEI/meshprep -w C:/Users/mecht/Project_EI/3DEI/meshprep/space/wheels --no-deps
 ```
 
 If the version in `pyproject.toml` changed, update the wheel filename in
@@ -36,7 +36,7 @@ If the version in `pyproject.toml` changed, update the wheel filename in
 **Mandatory freshness guard — run before EVERY push:**
 
 ```
-python C:/Users/mecht/Project_EI/3DEI/printworthy/space/check_wheel.py
+python C:/Users/mecht/Project_EI/3DEI/meshprep/space/check_wheel.py
 ```
 
 It fails (non-zero) when the wheel is older than any source file or when

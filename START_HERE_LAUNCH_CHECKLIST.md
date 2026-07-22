@@ -12,10 +12,16 @@ afternoon; treat the paid tier as "whenever counsel signs off," not "+N hours."
 
 ## ⚠️ Repo layout — read this first (it has already confused one search)
 
+**Naming note (2026-07-11):** the product/package/repo name is **`printworthy`**
+(renamed from meshprep after name research). The LOCAL FOLDERS still carry the
+old names — `3DEI\meshprep\` holds the printworthy repo, `3DEI\meshprep_pro\`
+holds the pro repo — because an open editor held file locks during the rename.
+Folder names are cosmetic; every command below uses the real folder paths.
+
 There are **TWO separate repos in sibling folders**:
 
 ```
-C:\Users\mecht\Project_EI\3DEI\printworthy\       <- PUBLIC (MIT). This one gets pushed to GitHub.
+C:\Users\mecht\Project_EI\3DEI\meshprep\       <- PUBLIC (MIT). This one gets pushed to GitHub.
 C:\Users\mecht\Project_EI\3DEI\meshprep_pro\   <- PROPRIETARY. Its OWN git repo. NEVER pushed.
 ```
 
