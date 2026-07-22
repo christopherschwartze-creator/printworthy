@@ -149,3 +149,21 @@ brand would be more defensible.
 3. Assess **descriptiveness / registrability** (§5).
 4. Proper **WHOIS** on `meshprep.{com,io,dev,…}` (DNS was unreliable here).
 5. Only after that: a go/no-go on the name. **Until then the name is NOT cleared.**
+
+---
+
+## DECISION (2026-07-11): renamed to **printworthy**
+
+Chosen over meshprep after this file's collision findings. New-name checks
+(2026-07-11): **PyPI free** (also checked: meshready, meshproof, proofmesh,
+mendmesh, firstlayer, printready, printcheck, printpath, trueprint,
+bedready, shipshape3d — all free on PyPI); **no in-niche software collisions
+found** for "printworthy" in web search (bedready was killed by bedready.io +
+OctoPrint-BedReady; Realizer earlier killed by ReaLizer GmbH, a German metal-
+3D-printer maker — same-industry senior mark). Rationale: verdict-shaped name
+matching the product's verdict-first identity; distinctive enough to own,
+instantly parseable. Rename executed across package/CLI/env-vars/docs/space
+files + the pro repo's imports; historical *_REPORT.md files intentionally
+keep "meshprep" as dated records; local FOLDER names unchanged (editor file
+locks; cosmetic). USPTO/EUIPO clearance for "printworthy" remains a COUNSEL
+task — this addendum is research, not clearance.
