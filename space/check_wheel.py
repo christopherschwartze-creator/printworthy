@@ -1,6 +1,6 @@
-"""Deploy guard: refuse to ship a stale meshprep wheel.
+"""Deploy guard: refuse to ship a stale printworthy wheel.
 
-The Space installs meshprep from ./wheels/*.whl. A wheel built before the
+The Space installs printworthy from ./wheels/*.whl. A wheel built before the
 latest source change silently ships an old backend (this actually happened:
 a wheel predating the whole 'space' preset feature sat in wheels/ ready to
 deploy). Run this BEFORE every push; it exits non-zero when the wheel must
@@ -8,7 +8,7 @@ be rebuilt.
 
 Checks
   1. exactly one wheel in wheels/ and it is the one requirements.txt names;
-  2. the wheel is newer than every tracked source file in src/meshprep
+  2. the wheel is newer than every tracked source file in src/printworthy
      (build/ artifacts and caches ignored);
   3. the wheel's own copies of the feature-critical modules byte-match the
      source tree (profiles.py / pipeline.py / report.py / app.py) — mtime
@@ -23,8 +23,8 @@ import sys
 import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PKG_ROOT = os.path.dirname(HERE)                       # .../meshprep
-SRC = os.path.join(PKG_ROOT, "src", "meshprep")
+PKG_ROOT = os.path.dirname(HERE)                       # .../printworthy
+SRC = os.path.join(PKG_ROOT, "src", "printworthy")
 WHEELS = os.path.join(HERE, "wheels")
 REQS = os.path.join(HERE, "requirements.txt")
 
@@ -76,14 +76,14 @@ def main() -> int:
         with zipfile.ZipFile(whl) as z:
             names = set(z.namelist())
             for mod in CRITICAL:
-                arc = f"meshprep/{mod}"
+                arc = f"printworthy/{mod}"
                 if arc not in names:
                     return fail(f"wheel is missing {arc}")
                 src_path = os.path.join(SRC, mod)
                 with open(src_path, "rb") as fh:
                     if z.read(arc) != fh.read():
                         return fail(f"wheel copy of {mod} differs from "
-                                    "src/meshprep — stale build")
+                                    "src/printworthy — stale build")
     except zipfile.BadZipFile:
         return fail("wheel is not a valid zip archive")
 

@@ -1,4 +1,4 @@
-# Deploying the meshprep Space
+# Deploying the printworthy Space
 
 > First time publishing to Hugging Face? Use the full step-by-step
 > walkthrough instead: `../PUBLISH_TO_HUGGINGFACE.md` (account creation →
@@ -16,18 +16,18 @@ This `space/` folder is the complete Space repo:
 ```
 space/
   README.md          <- HF Space config (YAML frontmatter) + landing text
-  app.py             <- entry point; imports meshprep.app.build_demo()
-  requirements.txt   <- PINNED deps + the local meshprep wheel
+  app.py             <- entry point; imports printworthy.app.build_demo()
+  requirements.txt   <- PINNED deps + the local printworthy wheel
   wheels/
-    meshprep-0.1.0a1-py3-none-any.whl
+    printworthy-0.1.0a1-py3-none-any.whl
 ```
 
-meshprep is not on PyPI; it rides along as the wheel in `wheels/`,
+printworthy is not on PyPI; it rides along as the wheel in `wheels/`,
 referenced from `requirements.txt` as a relative path. After ANY change to
 the package, rebuild it before pushing:
 
 ```
-pip wheel C:/Users/mecht/Project_EI/3DEI/meshprep -w C:/Users/mecht/Project_EI/3DEI/meshprep/space/wheels --no-deps
+pip wheel C:/Users/mecht/Project_EI/3DEI/printworthy -w C:/Users/mecht/Project_EI/3DEI/printworthy/space/wheels --no-deps
 ```
 
 If the version in `pyproject.toml` changed, update the wheel filename in
@@ -36,21 +36,21 @@ If the version in `pyproject.toml` changed, update the wheel filename in
 **Mandatory freshness guard — run before EVERY push:**
 
 ```
-python C:/Users/mecht/Project_EI/3DEI/meshprep/space/check_wheel.py
+python C:/Users/mecht/Project_EI/3DEI/printworthy/space/check_wheel.py
 ```
 
 It fails (non-zero) when the wheel is older than any source file or when
 the wheel's copies of profiles/pipeline/report/app differ from
-`src/meshprep` — exactly the stale-wheel failure that once nearly shipped a
+`src/printworthy` — exactly the stale-wheel failure that once nearly shipped a
 Space whose backend lacked the `space` preset. Do not push on a FAIL.
 
 Before pushing, replace the two `REPLACE-ME` GitHub placeholder links
-(in `README.md` here and in `src/meshprep/app.py` FOOTER).
+(in `README.md` here and in `src/printworthy/app.py` FOOTER).
 
 ## Option A — web upload (no git needed)
 
 1. Log in at https://huggingface.co and go to https://huggingface.co/new-space
-2. Name: `meshprep` (or your choice). License: MIT. SDK: **Gradio**.
+2. Name: `printworthy` (or your choice). License: MIT. SDK: **Gradio**.
    Hardware: **CPU basic (free)**. Visibility: your call (private is fine
    for a first smoke test; flip to public later).
 3. On the new Space's **Files** tab, click **Add file -> Upload files** and
@@ -63,11 +63,11 @@ Before pushing, replace the two `REPLACE-ME` GitHub placeholder links
 ## Option B — git push
 
 ```
-git clone https://huggingface.co/spaces/<your-username>/meshprep
+git clone https://huggingface.co/spaces/<your-username>/printworthy
 # copy the contents of this space/ folder into the clone (including wheels/)
-cd meshprep
+cd printworthy
 git add -A
-git commit -m "meshprep space"
+git commit -m "printworthy space"
 git push
 ```
 
@@ -79,7 +79,7 @@ current wheel is well under that.)
 - **Hardware:** 2 vCPU, 16 GB RAM, no GPU. One job at a time (the app
   queues with a single worker on purpose).
 - **Speed:** a typical mesh preps in seconds to ~2 minutes. `app.py` sets
-  `MESHPREP_PRESET=space`, which activates the hosted bundle: 20k-face
+  `PRINTWORTHY_PRESET=space`, which activates the hosted bundle: 20k-face
   analysis proxy, ~120 s soft stage budget (optional stages skip with an
   honest note; fix/re-check/verdict always run), fast post-fix re-check,
   and the support render. The review states when a mesh was simplified.

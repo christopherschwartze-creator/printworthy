@@ -1,4 +1,4 @@
-# meshprep — Release Manifest
+# printworthy — Release Manifest
 
 The clean OSS perimeter (LICENSE, README, THIRD_PARTY_NOTICES, pyproject, license_guard,
 CHANGELOG) is complete in this directory. This manifest specifies **exactly which source
@@ -8,9 +8,9 @@ steps and the conscious caveats. Source lives in the development monorepo at
 
 ## Target layout (after vendoring)
 ```
-meshprep/
+printworthy/
 ├── LICENSE  README.md  THIRD_PARTY_NOTICES.md  pyproject.toml  license_guard.py  CHANGELOG.md
-└── src/meshprep/
+└── src/printworthy/
     ├── preflight/     ← Forge/preflight/        (checker + source-accurate fixer)
     ├── reinforce/     ← Forge/reinforce/        (graded-infill 3MF)
     ├── autorig/       ← Forge/autorig/          (mesh -> posable glTF rig)
@@ -62,15 +62,15 @@ it via `_deform_score`.)
    `..repair._manifold_guarantee`. Extract just `_manifold_guarantee` (+ its tiny helpers)
    into `core/_manifold.py` so the package does **not** pull the whole repair pipeline. (~1 h.)
 2. **Rewrite imports.** The dev modules use `sys.path.insert` + bare `import _print_fem`. In
-   the package, convert to intra-package imports (`from meshprep.core import _print_fem`), or
+   the package, convert to intra-package imports (`from printworthy.core import _print_fem`), or
    keep a single `core/__init__.py` that puts `core/` on the path. Mechanical, test after.
 3. **Isolated install test.** `pip install -e .` in a clean venv → run each tool's
-   `selftest` + the three CLIs on a sample mesh; confirm no import reaches outside `meshprep`.
+   `selftest` + the three CLIs on a sample mesh; confirm no import reaches outside `printworthy`.
 4. **Re-run `license_guard.py src/`** on the vendored tree (must stay CLEAN).
 
 ## Conscious caveats (decide before `twine upload`)
 
-- **Name `meshprep` is a placeholder** — `pip index versions meshprep` / check PyPI, and run a
+- **Name `printworthy` is a placeholder** — `pip index versions printworthy` / check PyPI, and run a
   trademark clearance (avoid the `forge`-was-taken + Autodesk-Forge problems). A distinctive
   coined mark is safer than a generic one.
 - **Copyright holder** — `LICENSE` and `pyproject` say *Christopher Schwartze*; set your exact

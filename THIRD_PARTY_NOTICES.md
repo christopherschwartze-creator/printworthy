@@ -1,13 +1,13 @@
 # Third-Party Notices
 
-`meshprep` is MIT-licensed and depends only on **permissive** third-party components.
+`printworthy` is MIT-licensed and depends only on **permissive** third-party components.
 Each is the property of its respective authors under the license shown. This file is the
 attribution record; it is not required by MIT but is provided for transparency and to make
 the permissive-only guarantee auditable (see `license_guard.py`).
 
 ## Runtime dependencies (core)
 
-| Component | License | Use in meshprep |
+| Component | License | Use in printworthy |
 |---|---|---|
 | NumPy | BSD-3-Clause | all array math |
 | SciPy | BSD-3-Clause | sparse linear algebra (FEM solves), ndimage, cKDTree, csgraph |

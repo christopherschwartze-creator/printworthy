@@ -3,7 +3,7 @@
 gradio==6.19.0
 gradio_client==2.5.0
 
-# meshprep core dependencies (from pyproject.toml, pinned)
+# printworthy core dependencies (from pyproject.toml, pinned)
 numpy==2.2.6
 scipy==1.15.0
 trimesh==4.11.5
@@ -21,8 +21,8 @@ matplotlib==3.10.6
 # verified available on PyPI for this exact version.
 embreex==4.4.0
 
-# meshprep itself, shipped as a wheel inside this Space repo.
+# printworthy itself, shipped as a wheel inside this Space repo.
 # Rebuild after any package change with:
-#   pip wheel C:/Users/mecht/Project_EI/3DEI/meshprep -w space/wheels --no-deps
+#   pip wheel C:/Users/mecht/Project_EI/3DEI/printworthy -w space/wheels --no-deps
 # and update the filename below if the version changes.
-./wheels/meshprep-0.1.0a1-py3-none-any.whl
+./wheels/printworthy-0.1.0a1-py3-none-any.whl

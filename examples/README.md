@@ -1,4 +1,4 @@
-# meshprep examples
+# printworthy examples
 
 Three copy-paste walkthroughs with the **exact commands** and the **real measured
 outcomes** from the validation runs. Every number below is pulled from a report in this
@@ -19,10 +19,10 @@ tunnels, walls thinner than a nozzle. `check` tells you what's wrong in one sent
 
 ```bash
 # analysis only — nothing is modified
-meshprep check axe.glb
+printworthy check axe.glb
 
 # the source-accurate repair alone (writes a fixed mesh + certificate)
-meshprep fix axe.glb -o axe_fixed.stl
+printworthy fix axe.glb -o axe_fixed.stl
 ```
 
 **What you get (measured on the real axe, `foolproof/results/ai_axe`):**
@@ -56,7 +56,7 @@ in PrusaSlicer / Orca / Bambu and it prints as-is.
 
 ```bash
 # load along +Z (axis 2), 200 N; two graded tiers: 50% then 100% infill toward the core
-meshprep reinforce bracket.stl -o reinforced.3mf \
+printworthy reinforce bracket.stl -o reinforced.3mf \
     --load-axis 2 --force 200 --tiers "55:50:mid,85:100:core"
 ```
 
@@ -72,7 +72,7 @@ meshprep reinforce bracket.stl -o reinforced.3mf \
   material split to matter"*, `S2_FEATURES_REPORT.md`).
 
 > **Honest scope:** the importance field is a **relative / comparative, uncalibrated**
-> load path — it is *not* a certified factor-of-safety. Run `meshprep calibrate` on one
+> load path — it is *not* a certified factor-of-safety. Run `printworthy calibrate` on one
 > printed coupon to turn the physics estimates into calibrated millimetres for your
 > printer + filament.
 
@@ -87,17 +87,17 @@ schema-verified against PrusaSlicer's `Model.cpp` / `3mf.cpp`, and the slicing e
 
 ```bash
 # standalone: mesh -> risk-driven SupportEnforcer/Blocker 3MF
-meshprep supports l_bracket.stl -o bracket_supported.3mf
+printworthy supports l_bracket.stl -o bracket_supported.3mf
 
 # or fold it into the full pipeline at the shipped orientation
-meshprep prep l_bracket.stl --supports
+printworthy prep l_bracket.stl --supports
 ```
 
 Prefer the Python API? It returns the enforcer/blocker counts and an honesty note:
 
 ```python
 import trimesh
-from meshprep.core.support_mods import support_mods
+from printworthy.core.support_mods import support_mods
 
 mesh = trimesh.load("l_bracket.stl")
 out = support_mods(mesh, out_3mf="bracket_supported.3mf")
@@ -129,7 +129,7 @@ creases (EI neck-cut) or CoACD interfaces, makes an exact `manifold3d` boolean c
 adds peg/socket connectors with a printable fit coupon.
 
 ```python
-from meshprep.split import split_for_bed
+from printworthy.split import split_for_bed
 result = split_for_bed(mesh, profile="generic_fdm", smart=True)   # opt-in
 ```
 

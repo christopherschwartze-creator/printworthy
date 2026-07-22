@@ -15,12 +15,12 @@ afternoon; treat the paid tier as "whenever counsel signs off," not "+N hours."
 There are **TWO separate repos in sibling folders**:
 
 ```
-C:\Users\mecht\Project_EI\3DEI\meshprep\       <- PUBLIC (MIT). This one gets pushed to GitHub.
+C:\Users\mecht\Project_EI\3DEI\printworthy\       <- PUBLIC (MIT). This one gets pushed to GitHub.
 C:\Users\mecht\Project_EI\3DEI\meshprep_pro\   <- PROPRIETARY. Its OWN git repo. NEVER pushed.
 ```
 
 `meshprep_pro` is **deliberately absent** from the public folder and from the
-public repo's git history — if it were inside `meshprep/`, the Phase-A GitHub
+public repo's git history — if it were inside `printworthy/`, the Phase-A GitHub
 push would open-source the paid product. So: looking for it inside this repo
 correctly finds nothing. Every `meshprep_pro/...` reference below means the
 **absolute sibling path** `C:\Users\mecht\Project_EI\3DEI\meshprep_pro\...`.
@@ -36,8 +36,8 @@ in step A2 anyway; the pro repo should not be the only unbacked asset.
 ## Phase A — the free tier goes live (~1–2 h)
 
 - [ ] **A1. Name + author metadata** (15 min, no repo needed yet):
-      `meshprep` is free on PyPI (verified 2026-07-03; re-check at
-      https://pypi.org/project/meshprep/ — a 404 means still free). Preliminary
+      `printworthy` is free on PyPI (verified 2026-07-03; re-check at
+      https://pypi.org/project/printworthy/ — a 404 means still free). Preliminary
       name research (PyPI / GitHub / HF / web + descriptiveness flag) is written
       up in **`NAME_RESEARCH.md`** — this is research to hand to counsel, **NOT
       a clearance**. The name is **not cleared** until counsel says so (same
@@ -47,16 +47,16 @@ in step A2 anyway; the pro repo should not be the only unbacked asset.
       GitHub repo that does not exist until A2, so it's set in A2 (this was the
       old ordering bug: A1 used to set a Homepage for a repo A2 hadn't created).
 - [ ] **A2. GitHub push + wire the URLs** (15 min): create the public repo
-      (github.com → New repository → `meshprep`, public, no README — we have
+      (github.com → New repository → `printworthy`, public, no README — we have
       one), then:
       ```
-      git remote add origin https://github.com/<your-username>/meshprep.git
+      git remote add origin https://github.com/<your-username>/printworthy.git
       git push -u origin main
       ```
       NOW that the repo URL exists, set it in `pyproject.toml`
-      (`[project.urls] Homepage = https://github.com/<your-username>/meshprep`)
+      (`[project.urls] Homepage = https://github.com/<your-username>/printworthy`)
       and do Step 0 of `PUBLISH_TO_HUGGINGFACE.md` — replace the two
-      `REPLACE-ME` links (in `space/README.md` and `src/meshprep/app.py`) **and**
+      `REPLACE-ME` links (in `space/README.md` and `src/printworthy/app.py`) **and**
       the `<your-username>` placeholder in this repo's `README.md` install line
       with your username. Because you touched `app.py` and `pyproject.toml`,
       **rebuild the wheel** (`pip wheel . -w space/wheels --no-deps`, delete the
@@ -139,7 +139,7 @@ in step A2 anyway; the pro repo should not be the only unbacked asset.
 
 ## Phase D — the physical validations (whenever, with a printer)
 
-- [ ] **D1.** Print the warp coupon → `meshprep calibrate` (turns estimates
+- [ ] **D1.** Print the warp coupon → `printworthy calibrate` (turns estimates
       into calibrated mm — and unlocks honest **calibrated-mm** warp claims;
       until this is done, warp stays *comparative/uncalibrated* everywhere,
       including the Phase C posts).

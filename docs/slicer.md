@@ -1,4 +1,4 @@
-# `meshprep.slicer` — slicer-CLI estimates ("saves X g / Y min")
+# `printworthy.slicer` — slicer-CLI estimates ("saves X g / Y min")
 
 Wraps an **installed** slicer's command line to slice a model and read the
 slicer's own print-time / filament estimates out of the g-code comments.
@@ -6,7 +6,7 @@ This is what turns a repair or a graded-infill pass into a headline number:
 `compare(before, after)` → *"after saves 12.3 g / 41.0 min (18.5 %)"*.
 
 **AGPL-clean:** PrusaSlicer / SuperSlicer / OrcaSlicer / Bambu Studio are
-AGPL. meshprep only *executes* their CLI as a subprocess and reads the text
+AGPL. printworthy only *executes* their CLI as a subprocess and reads the text
 files they write — nothing is linked, imported, or vendored. No slicer is
 bundled; installing one is the user's choice.
 
@@ -16,7 +16,7 @@ pipeline simply reports estimates as unavailable (optional feature).
 ## API
 
 ```python
-from meshprep import slicer
+from printworthy import slicer
 
 slicer.find_slicer()                # -> {"name": "prusa", "path": exe} | None
 slicer.estimate("part.stl",         # -> {ok, print_time_s, filament_g,

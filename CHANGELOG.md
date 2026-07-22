@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to **meshprep** are recorded here. Format loosely follows
+All notable changes to **printworthy** are recorded here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
 
 ## [0.1.0a1] — unreleased (launch-ready; alpha, not yet published)
@@ -20,7 +20,7 @@ multi-material, credit-gated Pro Space) exists outside this repo; its public
 stubs here carry the full build plans.
 
 ### Added
-- **`meshprep.prep()` one-call pipeline** (`pipeline.py`): load → ingress
+- **`printworthy.prep()` one-call pipeline** (`pipeline.py`): load → ingress
   guards → analyze (premortem / traps / topology / unit scan) → source-accurate
   **fix** (deviation certificate, never-worse rollback, fidelity-gated
   sealing) → orient → optional warp/strength FEM → graded-infill 3MF →
@@ -33,7 +33,7 @@ stubs here carry the full build plans.
 - **Print-FEM** (`scikit-fem` + `pyamg`): inherent-strain warp
   (Timoshenko-validated), orthotropic strength / orient-for-strength,
   explicit `length_unit` Pa bridge + metre-scale `unit_warning`, one-coupon
-  **calibration** (`meshprep calibrate`).
+  **calibration** (`printworthy calibrate`).
 - **`reinforce`** — graded-infill 3MF (schema source-verified against
   PrusaSlicer `3mf.cpp`; CLI-proven 1.85× modifier application) + the
   **gradient pre-screen** (`recommend_grading`): grading is offered only when
@@ -41,7 +41,7 @@ stubs here carry the full build plans.
   the parts where grading wins (+20–35 % material) from the majority where
   uniform infill is the better deal.
 - **Risk-driven support enforcers/blockers** (`core/support_mods.py` +
-  `meshprep supports`, `prep --supports`): premortem risk field →
+  `printworthy supports`, `prep --supports`): premortem risk field →
   `SupportEnforcer`/`SupportBlocker` volumes (strings source-verified against
   PrusaSlicer `Model.cpp`; slicing effect measured, not asserted:
   enforcer +42.5 % / blocker −26.7 % support material on the control part).

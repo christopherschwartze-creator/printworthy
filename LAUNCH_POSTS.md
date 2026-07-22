@@ -1,10 +1,10 @@
-# Launch Posts — meshprep
+# Launch Posts — printworthy
 
 > **These are DRAFTS. Posting is the user's action, not the tool's.** Nothing here goes live until
 > you (a) deploy the Hugging Face Space, (b) capture the screenshots called out in the checklist, and
 > (c) paste the drafts yourself. Every number below is copied verbatim from a measured report
 > (`meshprep_pro/S2_FEATURES_REPORT.md`, `meshprep_pro/PRO_BUILD_REPORT.md`,
-> `meshprep/FOOLPROOF_REPORT.md`, `meshprep/SPACE_REVIEW_REPORT.md`) with its honesty label intact.
+> `printworthy/FOOLPROOF_REPORT.md`, `printworthy/SPACE_REVIEW_REPORT.md`) with its honesty label intact.
 > Do not round up, do not strip a label, do not add a benchmark win we did not measure. Replace every
 > `[LINK-TBD]` before posting.
 
@@ -86,13 +86,13 @@ it before it says something confusing instead of something clear? Break it for m
 ## Draft 3 — HF community / Show-HN style (the technical angle)
 
 **Title options:**
-1. Show HN: meshprep — an open-core 3D-print pre-flight with a fuzz-hardened never-crash contract and source-verified 3MF tricks
+1. Show HN: printworthy — an open-core 3D-print pre-flight with a fuzz-hardened never-crash contract and source-verified 3MF tricks
 2. Open-core print pre-flight: FEM validated against a closed-form case, license-clean remesher, and a "never ships a bad part" gate
 3. I source-read PrusaSlicer to get the 3MF support/multi-material schema right, then fuzzed the whole thing until it stopped crashing
 
 **Body (~295 words):**
 
-meshprep is an open-core pre-flight for 3D printing. The free core (MIT) does repair, printability
+printworthy is an open-core pre-flight for 3D printing. The free core (MIT) does repair, printability
 gating, oriented supports, and oversized-part splitting; a separate paid package adds warp
 pre-compensation, quoting, and a license-clean remesher. Repo: [LINK-TBD]. Design notes below.
 

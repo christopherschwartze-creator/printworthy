@@ -1,4 +1,4 @@
-# Publishing meshprep to Hugging Face — complete first-timer walkthrough
+# Publishing printworthy to Hugging Face — complete first-timer walkthrough
 
 **Part 1** (this page, top): the FREE Space — from "never used Hugging Face" to
 a live public demo. **Part 2** (below): putting the PAID offering online —
@@ -18,10 +18,10 @@ publish button. Nothing is visible to anyone until you flip it.
 
 ## Step 0 — Decide about the source link (5 min, one-time)
 
-Two files contain a placeholder link `https://github.com/REPLACE-ME/meshprep`:
+Two files contain a placeholder link `https://github.com/REPLACE-ME/printworthy`:
 
 - `space/README.md` (the Space landing text)
-- `src/meshprep/app.py` (the app footer — note: this one lives INSIDE the
+- `src/printworthy/app.py` (the app footer — note: this one lives INSIDE the
   package, so changing it requires rebuilding the wheel, Step 1)
 
 The GitHub repo **does not exist yet** (the git repo is local-only so far).
@@ -29,10 +29,10 @@ Pick one:
 
 - **Option 1 — create the GitHub repo first** (recommended if you want the
   open-core funnel working from day one): on github.com → New repository →
-  name `meshprep`, public, no README (we have one) → then from
-  `C:\Users\mecht\Project_EI\3DEI\meshprep`:
+  name `printworthy`, public, no README (we have one) → then from
+  `C:\Users\mecht\Project_EI\3DEI\printworthy`:
   ```
-  git remote add origin https://github.com/<your-username>/meshprep.git
+  git remote add origin https://github.com/<your-username>/printworthy.git
   git push -u origin main
   ```
   Then replace `REPLACE-ME` with your username in both files.
@@ -45,18 +45,18 @@ into the wheel.
 
 ## Step 1 — Rebuild + verify the wheel (2 min, EVERY deploy)
 
-The Space doesn't install meshprep from the internet — it ships as a wheel
+The Space doesn't install printworthy from the internet — it ships as a wheel
 file inside the `space/wheels/` folder. If you changed ANY package file since
 the wheel was built (including the footer edit above), rebuild:
 
 ```
-pip wheel C:/Users/mecht/Project_EI/3DEI/meshprep -w C:/Users/mecht/Project_EI/3DEI/meshprep/space/wheels --no-deps
+pip wheel C:/Users/mecht/Project_EI/3DEI/printworthy -w C:/Users/mecht/Project_EI/3DEI/printworthy/space/wheels --no-deps
 ```
 
 Then run the freshness guard — **mandatory before every deploy**:
 
 ```
-python C:/Users/mecht/Project_EI/3DEI/meshprep/space/check_wheel.py
+python C:/Users/mecht/Project_EI/3DEI/printworthy/space/check_wheel.py
 ```
 
 - **PASS** → continue.
@@ -79,7 +79,7 @@ python C:/Users/mecht/Project_EI/3DEI/meshprep/space/check_wheel.py
    | Field | Value |
    |---|---|
    | Owner | you |
-   | Space name | `meshprep` (or another — this becomes the URL: `huggingface.co/spaces/<you>/meshprep`) |
+   | Space name | `printworthy` (or another — this becomes the URL: `huggingface.co/spaces/<you>/printworthy`) |
    | License | MIT |
    | Select the SDK | **Gradio** (leave the template blank/default) |
    | Space hardware | **CPU basic · 2 vCPU · 16 GB · FREE** |
@@ -89,13 +89,13 @@ python C:/Users/mecht/Project_EI/3DEI/meshprep/space/check_wheel.py
 
 ## Step 4 — Upload the files (5 min, no git needed)
 
-You are uploading the **contents** of `C:\Users\mecht\Project_EI\3DEI\meshprep\space\`:
+You are uploading the **contents** of `C:\Users\mecht\Project_EI\3DEI\printworthy\space\`:
 
 ```
 README.md
 app.py
 requirements.txt
-wheels/meshprep-0.1.0a1-py3-none-any.whl
+wheels/printworthy-0.1.0a1-py3-none-any.whl
 ```
 
 (NOT `DEPLOY.md`/`check_wheel.py` — harmless if included, but they're operator
@@ -107,7 +107,7 @@ docs, not app files. Never upload anything from outside the `space/` folder.)
    For the wheel: drag the whole `wheels` FOLDER into the drop zone (modern
    browsers upload folders with their structure). If your browser won't take
    a folder, upload the `.whl` alone and type `wheels/` in front of its name
-   in the path box so it lands at `wheels/meshprep-...whl`.
+   in the path box so it lands at `wheels/printworthy-...whl`.
 4. `README.md` is special: the Space was created with a default README. Open
    **Files → README.md → edit** (pencil icon), select-all, delete, and paste
    the full contents of `space/README.md` — **including the `---` YAML block
@@ -162,7 +162,7 @@ community thread).
 
 ## Updating the Space later
 
-1. Change code in `src/meshprep/...` locally.
+1. Change code in `src/printworthy/...` locally.
 2. **Step 1 again** (rebuild wheel + `check_wheel.py` — never skip).
 3. Upload the changed files on the **Files** tab (same drag-and-drop; the new
    wheel replaces the old one — delete the stale `.whl` in the Files tab if
@@ -185,7 +185,7 @@ community thread).
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Build fails: `ERROR: Could not find ... wheels/meshprep-...` | Wheel filename in `requirements.txt` doesn't match the uploaded file, or the wheel landed at repo root instead of `wheels/` | Files tab → check the path is `wheels/<exact-name>.whl`; fix the name in `requirements.txt` |
+| Build fails: `ERROR: Could not find ... wheels/printworthy-...` | Wheel filename in `requirements.txt` doesn't match the uploaded file, or the wheel landed at repo root instead of `wheels/` | Files tab → check the path is `wheels/<exact-name>.whl`; fix the name in `requirements.txt` |
 | Build fails on a pinned package | PyPI hiccup or platform wheel missing | Retry (Settings → Factory rebuild). If persistent, report the exact log line back to a session |
 | "Configuration error" before any build | README YAML frontmatter mangled (missing `---` fences or `sdk_version`) | Re-paste `space/README.md` exactly, fences included |
 | App builds but shows a blank page / error | `sdk_version` in README doesn't match `gradio==` in requirements | Both must say the same version (currently 6.19.0) |
@@ -198,9 +198,9 @@ community thread).
 
 ```
 # one-time: create a WRITE token at huggingface.co/settings/tokens
-git clone https://huggingface.co/spaces/<you>/meshprep
+git clone https://huggingface.co/spaces/<you>/printworthy
 # copy the contents of space/ into the clone
-cd meshprep
+cd printworthy
 git add -A && git commit -m "deploy" && git push
 # username = your HF username, password = the token
 ```
@@ -253,7 +253,7 @@ it is an accidental open-source release of the paid product.
 
 The standard pattern instead:
 
-1. Create a **private** HF model/dataset repo (e.g. `<you>/meshprep-pro-wheels`,
+1. Create a **private** HF model/dataset repo (e.g. `<you>/printworthy-pro-wheels`,
    visibility Private) and upload the pro wheel there.
 2. In the Pro Space: **Settings -> Variables and secrets -> New secret**
    `HF_TOKEN` = a fine-grained read token for that private repo.
@@ -272,7 +272,7 @@ The standard pattern instead:
    | Product | Type | License keys | Suggested v1 price |
    |---|---|---|---|
    | retopo-pro seat (local package + Pro Space access) | One-time | ON, activation limit 2 | ~$79 (at/under the $109 incumbent) |
-   | meshprep credits — 25 pro jobs | One-time | ON, activation limit 1 | ~$10 |
+   | printworthy credits — 25 pro jobs | One-time | ON, activation limit 1 | ~$10 |
    | Bureau tier (quote API + batch + warp pre-comp + priority) | Subscription, monthly | ON (key active while sub active) | $49/mo to start |
 
    Attach the deliverable file (pro wheel / future exe) to the seat product —

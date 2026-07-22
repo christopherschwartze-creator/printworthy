@@ -1,5 +1,5 @@
 ---
-title: meshprep
+title: printworthy
 emoji: 🖨️
 colorFrom: blue
 colorTo: green
@@ -11,7 +11,7 @@ license: mit
 short_description: Drop a 3D model, get a print-ready file + a plain review
 ---
 
-# meshprep — get your 3D model ready for a print shop
+# printworthy — get your 3D model ready for a print shop
 
 Drop a 3D model (GLB / OBJ / STL / PLY / OFF / 3MF). You get back:
 
@@ -39,4 +39,4 @@ belongs to your printer or print shop.
 for training — nothing is uploaded anywhere except this Space.
 Limits: 25 MB / 3M triangles.
 
-Source: https://github.com/christopherschwartze-creator/meshprep
+Source: https://github.com/christopherschwartze-creator/printworthy

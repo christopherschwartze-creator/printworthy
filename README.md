@@ -1,10 +1,10 @@
-# meshprep
+# printworthy
 
 > **Drop a mesh, get a print-ready package — or a plain-English explanation of why not.**
 > Permissive, geometric/FEM-based, honest about its limits. Not a slicer, not artist-grade,
 > not a hosted service.
 
-`meshprep` takes a messy triangle mesh (from Meshy/Tripo/Rodin/Hunyuan, a phone scan, a
+`printworthy` takes a messy triangle mesh (from Meshy/Tripo/Rodin/Hunyuan, a phone scan, a
 CAD export) and runs the whole prep in one call: printability check → source-accurate
 repair (with a deviation certificate) → build orientation → warp/strength physics →
 graded-infill 3MF where it actually helps → a plain-language report. Every stage is
@@ -15,7 +15,7 @@ of pathological inputs (every entry point × empty/NaN/inside-out/oversize/corru
 real-broken-AI files): 141/141 product cells clean, the only 2 failures being deliberately
 planted tripwires that prove detection works. See `FOOLPROOF_REPORT.md`.
 
-> ℹ️ Name status: the `meshprep` package name is **unclaimed on PyPI** (verified
+> ℹ️ Name status: the `printworthy` package name is **unclaimed on PyPI** (verified
 > 2026-07-03) — but the package is **not published there**; install from source.
 > Trademark is **not cleared**: preliminary name research (PyPI / GitHub / HF /
 > web) is written up in `NAME_RESEARCH.md` — that is research to hand to counsel,
@@ -55,7 +55,7 @@ visibility. Labeled **UNCALIBRATED** — a lower bound until the one-coupon cali
 **Fix certificate** — every fix ships an auditable summary: delivered-file SHA-256, surface
 kept %, max deviation, dimensions, and an explicit "what this certificate is **NOT**" block.
 
-![meshprep fix certificate showing SHA-256 of the delivered STL, verdict ready, surface kept 100%, max deviation 0.0 mm, and a disclaimer that it is not a guarantee the part will print.](docs/images/fix-certificate.png)
+![printworthy fix certificate showing SHA-256 of the delivered STL, verdict ready, surface kept 100%, max deviation 0.0 mm, and a disclaimer that it is not a guarantee the part will print.](docs/images/fix-certificate.png)
 
 **Risk-driven supports** — the premortem risk field places **SupportEnforcer** volumes only
 where risk is real (schema-verified against PrusaSlicer; slicing effect MEASURED, not
@@ -73,15 +73,15 @@ pipeline runs end-to-end; `pf` = printability fraction, `fr` = high-risk area fr
 
 | Entry | Does | Honest scope |
 |---|---|---|
-| **`meshprep prep part.glb`** | The full pipeline: verdict + repair + orient + physics + graded 3MF + report, packaged into an output folder. | Physics estimates are labeled uncalibrated until you run the one-coupon calibration. |
-| **`meshprep check part.glb`** | Analysis only — **PASS / WARN / FAIL** with the reason, *where*, and the fix. Nothing is modified. | Geometric heuristics + a real (uncalibrated) warp FEM. Advisory, not a slicer. |
-| **`meshprep fix part.glb`** | The source-accurate repair alone (before→after, ~100 % of the surface kept verbatim, max-deviation certificate). | Fidelity is measured, not assumed; garbage topology gets an honest refusal, not a mangled "fix". |
-| **`meshprep reinforce bracket.stl`** | Mesh + load case → slicer-ready **3MF with graded infill** (dense on the FEM load path). PrusaSlicer/Orca/Bambu print it as-is. Includes a gradient pre-screen that tells you when plain uniform infill is the better deal. | Importance field is *relative* load (uncalibrated), not a certified safety margin. |
-| **`meshprep calibrate`** | One printed coupon → a per-printer/filament scale that turns warp estimates into calibrated millimetres. | One scalar per (printer, filament, profile). |
-| **`meshprep app`** | The same pipeline as a local drag-and-drop web app (Gradio). | Local only; nothing is uploaded anywhere. |
+| **`printworthy prep part.glb`** | The full pipeline: verdict + repair + orient + physics + graded 3MF + report, packaged into an output folder. | Physics estimates are labeled uncalibrated until you run the one-coupon calibration. |
+| **`printworthy check part.glb`** | Analysis only — **PASS / WARN / FAIL** with the reason, *where*, and the fix. Nothing is modified. | Geometric heuristics + a real (uncalibrated) warp FEM. Advisory, not a slicer. |
+| **`printworthy fix part.glb`** | The source-accurate repair alone (before→after, ~100 % of the surface kept verbatim, max-deviation certificate). | Fidelity is measured, not assumed; garbage topology gets an honest refusal, not a mangled "fix". |
+| **`printworthy reinforce bracket.stl`** | Mesh + load case → slicer-ready **3MF with graded infill** (dense on the FEM load path). PrusaSlicer/Orca/Bambu print it as-is. Includes a gradient pre-screen that tells you when plain uniform infill is the better deal. | Importance field is *relative* load (uncalibrated), not a certified safety margin. |
+| **`printworthy calibrate`** | One printed coupon → a per-printer/filament scale that turns warp estimates into calibrated millimetres. | One scalar per (printer, filament, profile). |
+| **`printworthy app`** | The same pipeline as a local drag-and-drop web app (Gradio). | Local only; nothing is uploaded anywhere. |
 
 > The **auto-rig** tool (static mesh → posable glTF-2.0 rig) ships as a separate package —
-> it is not part of `meshprep`.
+> it is not part of `printworthy`.
 
 Under them sits a **reduced-order FEM for 3D printing** (`scikit-fem` + `pyamg`): an
 inherent-strain **warp** predictor (reproduces the Timoshenko bimetal closed form under
@@ -104,16 +104,16 @@ for your exact printer + filament.
   warp coupon, load one graded bracket.
 - **Not a venture product.** This is a free, open, credibility/utility release. The ML
   rigging platforms own the production-rig market; the slicer/CAD incumbents own
-  optimization. `meshprep` fills the lightweight-permissive-geometric gap they leave.
+  optimization. `printworthy` fills the lightweight-permissive-geometric gap they leave.
 
 ## Install
 
-`meshprep` is **not published to PyPI** — it is open-source and installed from
+`printworthy` is **not published to PyPI** — it is open-source and installed from
 source. From a local clone (works today):
 
 ```bash
-git clone https://github.com/christopherschwartze-creator/meshprep.git
-cd meshprep
+git clone https://github.com/christopherschwartze-creator/printworthy.git
+cd printworthy
 pip install .                       # core (permissive only)
 pip install ".[fast]"               # + faster decimation
 # retopo-pyqf extra is LGPL-flagged — read THIRD_PARTY_NOTICES.md first
@@ -122,7 +122,7 @@ pip install ".[fast]"               # + faster decimation
 Or, once the repo is public, install straight from GitHub without cloning:
 
 ```bash
-pip install "git+https://github.com/christopherschwartze-creator/meshprep.git"
+pip install "git+https://github.com/christopherschwartze-creator/printworthy.git"
 ```
 
 The Hugging Face Space bundles its own wheel, so users of the hosted demo
@@ -132,22 +132,22 @@ install nothing.
 
 ```bash
 # the whole pipeline in one shot -> output folder with prep.stl + report + renders
-meshprep prep mypart.glb
+printworthy prep mypart.glb
 
 # check only (nothing modified): verdict + the one reason + where + the fix
-meshprep check mypart.glb
+printworthy check mypart.glb
 
 # graded-infill 3MF for a loaded part (open the .3mf in PrusaSlicer)
-meshprep reinforce bracket.stl -o reinforced.3mf --load-axis 2 --force 200 \
+printworthy reinforce bracket.stl -o reinforced.3mf --load-axis 2 --force 200 \
     --tiers "55:50:mid,85:100:core"
 
 # local drag-and-drop web app
-meshprep app
+printworthy app
 ```
 
 ```python
-import meshprep
-result = meshprep.prep("mypart.glb", profile="generic_fdm", reinforce_load="z")
+import printworthy
+result = printworthy.prep("mypart.glb", profile="generic_fdm", reinforce_load="z")
 print(result["verdict"], "-", result["headline"])   # never raises
 ```
 
@@ -156,11 +156,11 @@ print(result["verdict"], "-", result["headline"])   # never raises
 | Feature | Stub | One line |
 |---|---|---|
 | **Warp pre-compensation** | `core/warp_precomp.py` — stub here; **implemented in the separate pro package** | Invert the validated warp field: pre-deform the mesh so the print comes off the bed straight. The flagship. |
-| **Risk-driven supports** | `core/support_mods.py` — **implemented** | Premortem risk field → schema-verified **SupportEnforcer / SupportBlocker** volumes (PrusaSlicer `Model.cpp`/`3mf.cpp`); the slicing effect (enforcer adds / blocker removes support material) is MEASURED via a CLI proof, not asserted — `meshprep prep --supports` CLI wiring not yet landed, call `support_mods()` directly. |
+| **Risk-driven supports** | `core/support_mods.py` — **implemented** | Premortem risk field → schema-verified **SupportEnforcer / SupportBlocker** volumes (PrusaSlicer `Model.cpp`/`3mf.cpp`); the slicing effect (enforcer adds / blocker removes support material) is MEASURED via a CLI proof, not asserted — `printworthy prep --supports` CLI wiring not yet landed, call `support_mods()` directly. |
 | **Stress-mapped multi-material** | `core/multimaterial.py` — stub here; **implemented in the separate pro package** (real T0/T1 tool changes measured in gcode) | The reinforce field assigns **extruders**: rigid on the load path, soft/cheap elsewhere. |
 | **Smart split + connectors** | `split.py` (`plan_seams`, `plan_connectors`) — **implemented** | Seams scored (concavity/load/area) into concave creases (EI neck-cut) or CoACD interfaces, exact `manifold3d` boolean cut with a labeled fallback ladder, peg/socket connectors + fit coupon — opt-in via `split_for_bed(mesh, profile, smart=True)`. |
 | **Instant print quotes** | `quote.py` — stub here; **implemented in the separate pro package** (byte-reproducible quote body; refuses without a rate card) | Bureau intake: verdict + fix certificate + reproducible cost quote, single file or batch. |
-| **Trust map (AI-invented detector)** | `core/trust_map.py` — **implemented**; wired opt-in via `prep(..., trust_camera=...)` | Per-face **geometric visibility** check against the source camera: green = the photo actually showed this face, red = back-facing/occluded/out-of-frame and invented by the AI, blue = added by the repair step. Free & public — it's the honesty headline, not a paywall. Needs an *explicit, calibrated* source camera (`trust_map.Camera`); with no camera the feature is simply **absent**, never inferred or faked. Pose *estimation* from a bare image is shipped experimental inside `trust_map.py` but not yet reachable from `prep()` — that image-upload input surface is still open. Near-silhouette faces are shown *soft* (low confidence); on a dense mesh the base-pose uncertainty band is an approximation, so an **opt-in, RAM-gated pose-stability certification** (`trust_map(..., pose_jitter_deg=2.0)`) re-measures a ±2° camera-orbit and folds every actually-flipping face into the soft band — closing the pose-precision gate *within* the certified cone by measurement (flips beyond it stay a disclosed residual; validated on the real corpus, see `Applied/Quasi/provenance/results/trust_map_pose_jitter_validation.json`). See it: `meshprep.prep(mesh, trust_camera=trust_map.Camera.look_at(position=[0,0,60], target=[0,0,0]))` — a `trust.png` overlay (green/orange/blue) lands next to the other renders, and `result["channels"]["trust"]["frac_invented_pct"]` gives the area-weighted number. |
+| **Trust map (AI-invented detector)** | `core/trust_map.py` — **implemented**; wired opt-in via `prep(..., trust_camera=...)` | Per-face **geometric visibility** check against the source camera: green = the photo actually showed this face, red = back-facing/occluded/out-of-frame and invented by the AI, blue = added by the repair step. Free & public — it's the honesty headline, not a paywall. Needs an *explicit, calibrated* source camera (`trust_map.Camera`); with no camera the feature is simply **absent**, never inferred or faked. Pose *estimation* from a bare image is shipped experimental inside `trust_map.py` but not yet reachable from `prep()` — that image-upload input surface is still open. Near-silhouette faces are shown *soft* (low confidence); on a dense mesh the base-pose uncertainty band is an approximation, so an **opt-in, RAM-gated pose-stability certification** (`trust_map(..., pose_jitter_deg=2.0)`) re-measures a ±2° camera-orbit and folds every actually-flipping face into the soft band — closing the pose-precision gate *within* the certified cone by measurement (flips beyond it stay a disclosed residual; validated on the real corpus, see `Applied/Quasi/provenance/results/trust_map_pose_jitter_validation.json`). See it: `printworthy.prep(mesh, trust_camera=trust_map.Camera.look_at(position=[0,0,60], target=[0,0,0]))` — a `trust.png` overlay (green/orange/blue) lands next to the other renders, and `result["channels"]["trust"]["frac_invented_pct"]` gives the area-weighted number. |
 
 Rows marked **implemented** are real, verified features in this package. The remaining
 public stubs are callable and return an honest `{"ok": False, "implemented": False, note}`
