@@ -7,7 +7,13 @@ deploy). Run this BEFORE every push; it exits non-zero when the wheel must
 be rebuilt.
 
 Checks
-  1. exactly one wheel in wheels/ and it is the one requirements.txt names;
+  1. exactly one wheel in wheels/, its filename version matches the package's
+     actual __version__, and requirements.txt does NOT reference any local
+     .whl (regression guard: HF's build system installs requirements.txt in
+     an ISOLATED stage where the rest of the repo, including wheels/, is not
+     yet present -- a local wheel path there fails at build time with a bare
+     OSError, hit in production 2026-07-25. The wheel is installed at RUNTIME
+     instead, by app.py's _ensure_printworthy(), once the full repo exists);
   2. the wheel is newer than every tracked source file in src/printworthy
      (build/ artifacts and caches ignored);
   3. the wheel's own copies of the feature-critical modules byte-match the
@@ -46,14 +52,33 @@ def main() -> int:
         return fail(f"expected exactly one wheel in wheels/, found {wheels}")
     whl = os.path.join(WHEELS, wheels[0])
 
-    # 1. requirements.txt must reference this exact wheel file
+    # 1a. requirements.txt must NOT reference a local wheel (regression guard
+    #     for the build-stage-isolation bug — see module docstring)
     try:
         with open(REQS, encoding="utf-8") as fh:
             reqs = fh.read()
     except OSError as e:
         return fail(f"cannot read requirements.txt: {e}")
-    if wheels[0] not in reqs:
-        return fail(f"requirements.txt does not reference {wheels[0]}")
+    active_lines = [ln for ln in reqs.splitlines()
+                    if ln.strip() and not ln.strip().startswith("#")]
+    if any(".whl" in ln for ln in active_lines):
+        return fail(
+            "requirements.txt has an active (non-comment) line referencing "
+            "a local .whl again — this WILL fail at build time (HF installs "
+            "requirements.txt before the rest of the repo exists). The "
+            "wheel must be installed at runtime by app.py's "
+            "_ensure_printworthy(), not listed here.")
+
+    # 1b. the wheel's filename version must match the package's real version
+    try:
+        sys.path.insert(0, os.path.join(PKG_ROOT, "src"))
+        import printworthy as _pw
+        real_version = _pw.__version__
+    except Exception as e:
+        return fail(f"could not import printworthy to check its version: {e}")
+    if real_version not in wheels[0]:
+        return fail(f"wheel filename {wheels[0]!r} does not match "
+                    f"printworthy.__version__ {real_version!r}")
 
     # 2. wheel newer than every source file
     wt = os.path.getmtime(whl)
