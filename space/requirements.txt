@@ -21,8 +21,11 @@ matplotlib==3.10.6
 # verified available on PyPI for this exact version.
 embreex==4.4.0
 
-# printworthy itself, shipped as a wheel inside this Space repo.
-# Rebuild after any package change with:
-#   pip wheel C:/Users/mecht/Project_EI/3DEI/meshprep -w space/wheels --no-deps
-# and update the filename below if the version changes.
-./wheels/printworthy-0.1.0a1-py3-none-any.whl
+# printworthy itself is NOT installed here. Hugging Face's build system
+# installs requirements.txt in an ISOLATED stage where only this file is
+# mounted -- the rest of the repo (including wheels/) does not exist yet at
+# that point, so a local relative wheel path fails with a bare OSError
+# (verified 2026-07-25: "No such file or directory ... wheels/printworthy-
+# ...whl"). Fixed by installing the wheel at RUNTIME in app.py instead, once
+# the full repo (and wheels/) is actually present. See app.py's
+# _ensure_printworthy().

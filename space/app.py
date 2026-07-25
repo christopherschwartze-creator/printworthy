@@ -1,10 +1,49 @@
 """Hugging Face Space entry point — thin wrapper around printworthy's app.
 
-The real UI lives in printworthy.app (installed from ./wheels/*.whl via
-requirements.txt). This file only sets Space-appropriate limits and
-launches.
+The real UI lives in printworthy.app. printworthy is NOT installed via
+requirements.txt: HF's build system installs requirements.txt in an ISOLATED
+stage where only that file is mounted into the container -- the rest of the
+repo (including wheels/) is not present yet, so a local relative wheel path
+in requirements.txt fails at build time with a bare "No such file or
+directory" (hit in production 2026-07-25). Fixed by installing the wheel
+here, at RUNTIME, the moment this file executes -- by then the full repo
+(wheels/ included) has been copied into the container.
 """
 import os
+import subprocess
+import sys
+
+
+def _ensure_printworthy():
+    """Install printworthy from the bundled local wheel if not already
+    importable. --no-deps: every dependency printworthy needs is already
+    installed from requirements.txt in the build stage; this only adds our
+    own package on top, so it is fast and makes no network/version-resolver
+    calls of its own. Never raises a confusing import error -- if the wheel
+    is missing or broken, the real pip error is allowed to surface plainly
+    rather than being swallowed, since a broken Space should fail loudly in
+    the logs rather than serve a mysterious blank page."""
+    try:
+        import printworthy  # noqa: F401
+        return
+    except ImportError:
+        pass
+    here = os.path.dirname(os.path.abspath(__file__))
+    wheels_dir = os.path.join(here, "wheels")
+    candidates = [f for f in os.listdir(wheels_dir) if f.endswith(".whl")] \
+        if os.path.isdir(wheels_dir) else []
+    if not candidates:
+        raise RuntimeError(
+            f"printworthy is not installed and no wheel was found in "
+            f"{wheels_dir!r} to install it from. Check that wheels/*.whl "
+            f"was actually uploaded to this Space.")
+    wheel_path = os.path.join(wheels_dir, sorted(candidates)[-1])
+    subprocess.check_call(
+        [sys.executable, "-m", "pip", "install", "--no-cache-dir",
+         "--no-deps", wheel_path])
+
+
+_ensure_printworthy()
 
 # THE Space behaviour bundle: preset="space" (printworthy.profiles.PREP_PRESETS)
 # is the purpose-built hosted-demo configuration — 20k-face analysis proxy,
