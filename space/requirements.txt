@@ -4,14 +4,33 @@ gradio==6.19.0
 gradio_client==2.5.0
 
 # printworthy core dependencies (from pyproject.toml, pinned)
+#
+# THREE PINS BELOW ARE DELIBERATELY ONE MINOR VERSION BACK OF "latest we'd
+# otherwise pick" (2026-07-25): HF's free/ZeroGPU Gradio Space build
+# environment runs Python 3.10 -- confirmed by the actual build log (
+# /usr/local/lib/python3.10/site-packages, cp310 wheel tags) even with
+# `python_version: "3.11"` set in the Space README's YAML frontmatter (that
+# setting is NOT being honored on this hardware tier; see the HF forum
+# report of Spaces ignoring declared sdk/python config). scikit-image==
+# 0.26.0, pyamg==5.3.0 and networkx==3.5 all raised their own Requires-
+# Python floor to >=3.11 and were rejected outright by pip on cp310. Pinned
+# instead to the newest release of each that still ships a cp310 wheel
+# (verified via `pip download --python-version 3.10 --implementation cp
+# --abi cp310 --platform manylinux_2_28_x86_64 --only-binary=:all:`, which
+# reproduces HF's exact resolution). All three stay well above pyproject.
+# toml's own floors (scikit-image>=0.22, pyamg>=5.0, networkx>=3.0) and were
+# re-verified locally: every core selftest (_fix_accurate, _solidify,
+# fem_voxel_core's closed-form gate, _genus) plus a full prep() end-to-end
+# run pass identically under these exact versions. Safe to bump back up if
+# HF's python_version bug ever gets fixed -- these are a floor, not a need.
 numpy==2.2.6
 scipy==1.15.0
 trimesh==4.11.5
-scikit-image==0.26.0
+scikit-image==0.25.2
 scikit-fem==12.0.2
-pyamg==5.3.0
+pyamg==5.2.1
 manifold3d==3.4.1
-networkx==3.5
+networkx==3.4.2
 matplotlib==3.10.6
 
 # Embree ray backend for trimesh: the thin-wall / premortem analysis casts
