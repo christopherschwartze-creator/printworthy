@@ -45,6 +45,30 @@ def _ensure_printworthy():
 
 _ensure_printworthy()
 
+# Free Hugging Face accounts can now only create Gradio Spaces on ZeroGPU
+# hardware (CPU-basic creation requires a PRO subscription) -- confirmed in
+# production 2026-07-26: "Runtime error: No @spaces.GPU function detected
+# during startup". printworthy is a pure NumPy/SciPy/scikit-fem CPU pipeline
+# with zero GPU need; the platform's startup check is a static scan for the
+# PRESENCE of at least one @spaces.GPU-decorated function, not proof that one
+# is ever called (this is the documented "dummy placeholder" pattern other
+# non-GPU Gradio Spaces use to satisfy the same check). `spaces` is baked
+# into every free Space by the platform itself, NOT a real printworthy
+# dependency -- importing it defensively so this file still runs unchanged
+# for local dev / `printworthy app` outside of Hugging Face, where the
+# package is absent and no such check exists.
+try:
+    import spaces as _hf_spaces
+
+    @_hf_spaces.GPU
+    def _zerogpu_startup_placeholder():
+        """Never called. Exists only so Hugging Face's ZeroGPU platform
+        detects a @spaces.GPU function at startup; printworthy does no GPU
+        work at all."""
+        return None
+except ImportError:
+    pass
+
 # THE Space behaviour bundle: preset="space" (printworthy.profiles.PREP_PRESETS)
 # is the purpose-built hosted-demo configuration — 20k-face analysis proxy,
 # ~120 s soft stage budget (optional stages skip with an honest note; the fix,
