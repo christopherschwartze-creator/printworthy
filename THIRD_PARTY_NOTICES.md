@@ -19,6 +19,7 @@ the permissive-only guarantee auditable (see `license_guard.py`).
 | networkx | BSD-3-Clause | skeleton graph (tree extraction) |
 | pygltflib | MIT | glTF-2.0 skin export |
 | matplotlib | Matplotlib License (BSD-style, PSF-based) | heatmap / preview renders |
+| rtree | MIT | spatial index backing trimesh's `nearest.on_surface` (deviation certificate) |
 
 ## Optional dependencies
 

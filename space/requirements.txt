@@ -33,6 +33,20 @@ manifold3d==3.4.1
 networkx==3.4.2
 matplotlib==3.10.6
 
+# rtree: trimesh's nearest.on_surface() (the deviation-certificate two-sided
+# Hausdorff measurement, used throughout the fixer) needs rtree to build its
+# triangles_tree spatial index -- trimesh treats it as OPTIONAL and does not
+# pull it in as a transitive dependency, so it must be listed explicitly.
+# Its absence was a real, previously-undetected bug (2026-07-26): it never
+# surfaced on the developer's own machine because rtree happened to already
+# be installed globally there from unrelated past work, silently masking the
+# gap -- it only showed up once tested in a genuinely clean environment,
+# where every _fix_accurate case failed with worst_rms=inf (deviation
+# certificate silently catching the ModuleNotFoundError and returning its
+# worst-case default). MIT (rtree package + libspatialindex >=1.8.0, which
+# all current wheels bundle).
+rtree==1.4.1
+
 # Embree ray backend for trimesh: the thin-wall / premortem analysis casts
 # one inward ray per face; pure-python casting is O(faces^2) and was the
 # per-job time hotspot (measured locally on the worst corpus part:
