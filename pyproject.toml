@@ -49,6 +49,21 @@ dependencies = [
                             #          libspatialindex itself is MIT as of
                             #          1.8.0+, which all current PyPI wheels
                             #          bundle)
+    "fast-simplification>=0.1",  # MIT (github.com/pyvista/fast-simplification)
+                            #          trimesh.simplify_quadric_decimation is
+                            #          a thin wrapper that does `from
+                            #          fast_simplification import simplify`
+                            #          INSIDE the call -- if absent, it raises
+                            #          and core._mesh_util.decimate()'s
+                            #          except-Exception fallback silently
+                            #          returns the mesh UNDECIMATED. This is
+                            #          the ENTIRE compute-safety cap (ingress
+                            #          guard, the hosted Space's 20k-face
+                            #          analysis proxy) -- not optional.
+                            #          Verified in production 2026-07-26: a
+                            #          267,873-face upload analyzed at full
+                            #          resolution (should have capped to
+                            #          20,000), costing ~360s of a ~396s job.
 ]
 
 [project.optional-dependencies]

@@ -47,6 +47,20 @@ matplotlib==3.10.6
 # all current wheels bundle).
 rtree==1.4.1
 
+# fast_simplification: trimesh.simplify_quadric_decimation is a thin wrapper
+# that does `from fast_simplification import simplify` INSIDE the function
+# body -- absent, it raises, and core._mesh_util.decimate()'s except-Exception
+# fallback silently returns the mesh UNDECIMATED. This is the entire
+# compute-safety cap (ingress guard's DECIMATE_FACES, the hosted Space's
+# 20,000-face analysis proxy) -- not a nicety. SAME BUG CLASS as rtree above,
+# a second time: never surfaced locally because it happened to already be
+# installed globally (unrelated past work), silently masking the gap.
+# Verified in production 2026-07-26: a real 267,873-face upload analyzed at
+# FULL resolution instead of the intended 20,000-face cap, costing ~360s of a
+# ~396s job (reproduced exactly by simulating its absence: decimate(mesh,
+# 20000) returned all 267,873 faces unchanged). MIT.
+fast-simplification==0.1.13
+
 # Embree ray backend for trimesh: the thin-wall / premortem analysis casts
 # one inward ray per face; pure-python casting is O(faces^2) and was the
 # per-job time hotspot (measured locally on the worst corpus part:
