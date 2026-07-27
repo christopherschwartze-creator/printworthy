@@ -33,8 +33,8 @@ _COLOR = {"PASS": ("#1b7f3b", "#e7f6ec"),
 _PLAIN = {"PASS": "Ready to print",
           "WARN": "Printable — read the warnings",
           "FAIL": "Not printable yet",
-          "REJECTED": "We can't read this file",
-          "ERROR": "Something went wrong on our side",
+          "REJECTED": "Can't read this file",
+          "ERROR": "Something went wrong",
           "WORKING": "Working on it"}
 
 # Caption map keyed on the render-file stems the pipeline actually emits
@@ -65,18 +65,17 @@ _UNITS = {"Auto-detect": None,
           "Inches": "inch"}
 
 INTRO = """# printworthy
-**Drop a 3D model. Get back a print-ready file and a plain-English review you
-can hand to a print shop.**
+**Drop a 3D model. Get back a print-ready file and a plain-English report —
+for printing at home or handing to a shop.**
 
-We check your file, fix only what blocks printing — and tell you exactly how
-much of the surface we touched — sanity-check the size, and flag thin walls,
-trapped pockets and support-heavy angles, each with what to do next.
+It checks the file, fixes only what blocks printing (and reports exactly how
+much surface it touched), sanity-checks the size, and flags thin walls,
+trapped pockets, and support-heavy angles — each with a next step.
 
-<small>Research preview. The quick checks are geometric estimates. The
-optional warp prediction is a real physics simulation but **uncalibrated**:
-it shows where and roughly how much, not certified numbers. This is not a
-slicer, and verdicts are advisory — the final word belongs to your printer
-or print shop.</small>"""
+<small>Research preview. Checks are geometric estimates. Optional warp
+prediction is a real physics simulation but **uncalibrated** — it shows
+where and roughly how much, not certified numbers. Not a slicer; verdicts
+are advisory. The final call is your printer's, or your print shop's.</small>"""
 
 PRIVACY = ("<small>**Privacy:** your file is processed in memory and is not "
            "stored, logged, shared, or used for training — nothing is "
@@ -128,12 +127,12 @@ def _badge(verdict, headline, extras=()):
 
 
 def _trust_line(result, fix_requested):
-    """THE trust line: how much of the surface we touched, max deviation.
+    """THE trust line: how much surface the fix touched, max deviation.
     Composed from the deviation certificate; falls back to the pipeline's
     own fidelity line; never invents numbers."""
     fx = result.get("fix")
     if not fix_requested:
-        return "We did not modify your model (Fix was switched off)."
+        return "Your model was not modified (Fix was switched off)."
     if not isinstance(fx, dict):
         return ""
     cert = fx.get("deviation_certificate")
@@ -143,7 +142,7 @@ def _trust_line(result, fix_requested):
         if isinstance(unchg, (int, float)) and isinstance(dev, (int, float)) \
                 and dev == dev and dev != float("inf"):
             touched = max(0.0, min(100.0, 100.0 - float(unchg)))
-            return (f"We touched {touched:.0f}% of your surface "
+            return (f"The fix touched {touched:.0f}% of your surface "
                     f"(max deviation {dev:.3f} mm) — the rest is exactly "
                     f"your original.")
     return str(fx.get("fidelity_line") or "")
@@ -165,11 +164,11 @@ def _size_line(result, resized, unit_code):
                 f"{eff:g} mm.")
     if isinstance(ext, (int, float)) and 5.0 <= float(ext) <= 500.0:
         line = (f"Size check: your file's longest side reads {eff:.1f} mm — "
-                f"we KEPT your model at its original size. Use 'Resize' "
+                f"your model was KEPT at its original size. Use 'Resize' "
                 f"below if that's wrong.")
     else:
         line = (f"Size check: the file didn't say its units and its size "
-                f"looked implausible, so we GUESSED {eff:g} mm for the "
+                f"looked implausible, so {eff:g} mm was GUESSED for the "
                 f"longest side. Set 'File units' or 'Resize' if that's "
                 f"wrong.")
     warn = scan.get("warning")
@@ -396,16 +395,16 @@ def build_demo():
                                       label="Printer")
                 with gr.Row():
                     fix = gr.Checkbox(
-                        label="Fix problems (keeps your shape — we report "
-                              "exactly how much we touched)", value=True)
+                        label="Fix problems (keeps your shape — reports "
+                              "exactly how much was touched)", value=True)
                     orient = gr.Checkbox(
                         label="Suggest the best printing orientation",
                         value=True)
                 fem = gr.Checkbox(
                     label="Predict warp — ~1 min, physics estimate "
                           "(uncalibrated)", value=False)
-                with gr.Accordion("Size & units (we keep your file's own "
-                                  "size unless you change this)",
+                with gr.Accordion("Size & units (your file's own size is "
+                                  "kept unless you change this)",
                                   open=False):
                     resize = gr.Checkbox(
                         label="Resize for printing", value=False)

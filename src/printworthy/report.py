@@ -102,7 +102,7 @@ def _plain_headline(result):
     """(headline_str, next_action_str_or_None). ASCII, no jargon, console-safe."""
     if result.get("rejected"):
         return ("Couldn't read the file.",
-                "We couldn't open this as a 3D model -- check it's a real "
+                "This couldn't be opened as a 3D model -- check it's a real "
                 "STL/OBJ/3MF/PLY/GLB and try again.")
     g = _gate(result)
     gv = g["verdict"] if g else str(result.get("verdict", "")).upper()
@@ -665,13 +665,13 @@ def _rv_render_uri(p):
 # unchanged; only vocabulary is translated.
 _RV_PLAIN_SUBS = [
     (r"Set the print size \(or assume_unit='?m'?\)",
-     "Set the print size (or tell us the file is measured in metres)"),
+     "Set the print size (or set the file-units to metres)"),
     (r"assume_unit(='?\w+'?)?", "the file-units setting"),
     (r"\bprint_mm\b", "the print-size setting"),
     # engine reject phrasings, translated whole BEFORE the generic word
     # substitutions below would render them clumsy ("surface detail faces")
     (r"contains no triangle faces", "has no printable 3D surface in it"),
-    (r"is not a triangle mesh", "is not a 3D model we can read"),
+    (r"is not a triangle mesh", "is not a readable 3D model"),
     (r"\(?`?--[a-z][\w-]*`?\)?", "the matching option"),
     (r"[A-Za-z]:[\\/][^\s)\"'`]+", "(your download package)"),
     (r"(/tmp|/home)/[^\s)\"'`]*", "(your download package)"),
@@ -1248,10 +1248,10 @@ def _rv_banner(f):
     v = f["verdict"]
     if v == "ready":
         hc = f.get("holes_filled_count")
-        mid = (f"We sealed {hc} small gap{'s' if hc != 1 else ''}; everything "
-               "else is exactly as you uploaded it."
+        mid = (f"The fix sealed {hc} small gap{'s' if hc != 1 else ''}; "
+               "everything else is exactly as you uploaded it."
                if isinstance(hc, int) and hc > 0 else
-               "We didn't need to change anything — your file was already "
+               "Nothing needed to change — your file was already "
                "sound.")
         return ["> ✅ **READY TO PRINT** — Good news: your model is ready.",
                 f"> {mid}",
@@ -1260,15 +1260,17 @@ def _rv_banner(f):
         n = f["blocking_count"]
         need = ("one thing needs your decision." if n <= 1
                 else f"{n} things need your decision.")
-        did = ("We repaired everything we safely could — your receipt is in "
-               "the next section — but this one is a choice only you can "
-               "make. See item 1 below for your options." if f["fix_ran"] else
-               "We checked everything and changed nothing — this one is a "
-               "choice only you can make. See item 1 below for your options.")
+        did = ("Everything that could safely be repaired was fixed — the "
+               "receipt is in the next section — but this one is a choice "
+               "only you can make. See item 1 below for your options."
+               if f["fix_ran"] else
+               "Everything was checked and nothing needed changing — this "
+               "one is a choice only you can make. See item 1 below for "
+               "your options.")
         return [f"> ⚠️ **NOT READY YET** — {need}",
                 f"> {f['top_issue_plain']}",
                 f"> {did}", ""]
-    return ["> ❌ **WE COULDN'T READ THIS FILE** — so we changed nothing, and "
+    return ["> ❌ **THIS FILE COULDN'T BE READ** — nothing was changed, and "
             "there is no fixed file to download.",
             "> This usually means the export went wrong, not that your model "
             "is bad.",
@@ -1277,13 +1279,13 @@ def _rv_banner(f):
 
 
 def _rv_changed(f):
-    lines = ["## What we changed — and what we didn't", ""]
+    lines = ["## What changed — and what didn't", ""]
     if f["fix_ran"] and f.get("kept_s") is not None \
             and f.get("dev_s") is not None and f.get("repairs_made"):
         kept_s, dev_s = f["kept_s"], f["dev_s"]
         lines.append(
             f"**{kept_s}% of your surface is exactly as you uploaded it.** "
-            "Where we made repairs, the new surface is never more than "
+            "Where repairs were made, the new surface is never more than "
             f"**{dev_s} mm** from your original — {f['deviation_anchor']}.")
         lines.append("")
         hc = f.get("holes_filled_count")
@@ -1293,29 +1295,28 @@ def _rv_changed(f):
                         "in its surface — like "
                         + ("a pinhole" if one else "pinholes")
                         + " in a balloon. Printers need a fully sealed "
-                          "shape, so we sealed "
-                        + ("it." if one else "them."))
+                          "shape, so "
+                        + ("it was sealed." if one else "they were sealed."))
             if f.get("source_watertight") is True:
                 gap_line += (" (The gaps appeared in the simplified working "
-                             "copy we analyse — your original file was "
-                             "already fully sealed.)")
+                             "copy that gets analysed — your original file "
+                             "was already fully sealed.)")
             lines.append(gap_line)
-        lines.append("What we did **not** do: no smoothing, no reshaping, no "
-                     "detail reduction, no rescaling beyond the size you "
+        lines.append("What did **not** happen: no smoothing, no reshaping, "
+                     "no detail reduction, no rescaling beyond the size you "
                      "chose. The overall shape and details are unchanged — "
-                     "we verify this by measuring, not by eye.")
+                     "this is verified by measuring, not by eye.")
         lines.append("")
     else:
         tail = (" — it was already fully sealed."
                 if f.get("watertight_after") is not False else ".")
-        lines.append("We didn't change your model at all: **100% of your "
+        lines.append("Nothing was changed: **100% of your "
                      "surface is exactly as you uploaded it (0 mm "
                      "deviation)**" + tail)
         lines.append("")
     if f["cavities_count"] > 0:
         n = f["cavities_count"]
         many = n > 1
-        them = "them" if many else "it"
         sav = ""
         if f["material_savings_pct"] is not None:
             sav = (" and uses roughly "
@@ -1323,8 +1324,8 @@ def _rv_changed(f):
                    "a fill-everything repair would (a geometric estimate, "
                    "not a print-shop quote)")
         lines.append(
-            f"Your model has **{n} hollow space{'s' if many else ''} inside. "
-            f"We kept {them} hollow instead of filling {them} solid** — that "
+            f"Your model has **{n} hollow space{'s' if many else ''} inside, "
+            f"kept hollow instead of filled solid** — that "
             f"keeps the print faithful to your design{sav}.")
         lines.append("")
     if f["fix_ran"] and f["verdict"] == "not_ready":
@@ -1333,11 +1334,11 @@ def _rv_changed(f):
         lines.append(
             f"One honest note: {did} did **NOT** fix everything: "
             f"{f['residual_short']}. That needs a decision from you "
-            "(see item 1 below) — we don't change your model's shape "
+            "(see item 1 below) — your model's shape is not changed "
             "automatically.")
         lines.append("")
-    lines.append("Your original upload is never modified; everything we "
-                 "produce is a new file.")
+    lines.append("Your original upload is never modified; everything "
+                 "produced is a new file.")
     lines.append("")
     return lines
 
@@ -1354,10 +1355,10 @@ def _rv_size(f):
              "millimetres).", ""]
     if f["units_source"] == "assumed_mm":
         lines += ["Heads-up: your file didn't say what units it uses (most "
-                  "AI-generated files don't), so we assumed millimetres — "
-                  "the safe, standard guess.", ""]
+                  "AI-generated files don't) — assumed millimetres, the "
+                  "safe, standard guess.", ""]
     elif f["units_source"] == "user_target":
-        lines += ["We scaled it so its longest side matches the size you "
+        lines += ["It was scaled so its longest side matches the size you "
                   "picked on the upload screen.", ""]
     if f["flat_object"] and f["min_extent_mm"] is not None:
         lines += [f"Note the {_rv_fmt(f['min_extent_mm'], 1)} mm thickness: "
@@ -1380,12 +1381,12 @@ def _rv_pictures(f):
         if rs:
             imgs += f" ![support zones]({rs})"
         lines += [imgs, ""]
-        pos = (", shown in the printing position we've already applied"
+        pos = (", shown in the printing position already applied"
                if f["orientation_applied"] else "")
         ident = ("They should look identical — the repairs are smaller than "
                  "your screen can show (the receipt above is the measurement "
                  "behind that)." if f.get("repairs_made") else
-                 "They should look identical — we didn't change anything.")
+                 "They should look identical — nothing was changed.")
         lines += [f"**Left:** exactly what you uploaded. **Right:** the file "
                   f"you'll print{pos}. {ident}", ""]
         if rs:
@@ -1397,12 +1398,12 @@ def _rv_pictures(f):
                       "glass-smooth.", ""]
     else:
         # never a broken image or a server path: say plainly there are none
-        lines += ["We couldn't produce pictures for this file — every "
+        lines += ["Pictures couldn't be produced for this file — every "
                   "measurement above still stands; it's only the preview "
                   "images that are missing.", ""]
     if f["orientation_applied"] and f["support_pct_original"] is not None \
             and f["support_pct_oriented"] is not None:
-        lines += ["We already rotated the model to the position that needs "
+        lines += ["The model was already rotated to the position that needs "
                   "the least scaffolding — from "
                   f"{_rv_fmt(f['support_pct_original'], 0)}% of the surface "
                   f"down to {_rv_fmt(f['support_pct_oriented'], 0)}% "
@@ -1419,7 +1420,7 @@ _RV_SEV_TAG = {"blocking": "(needs your decision)", "check": "(please check)",
 def _rv_warn_section(f):
     lines = ["## Things to know before you print (most important first)", ""]
     if not f["warnings"]:
-        lines += ["Good news: nothing you need to worry about — we found no "
+        lines += ["Good news: nothing you need to worry about — no "
                   "problems worth flagging.", ""]
         return lines
     for i, c in enumerate(f["warnings"], 1):
@@ -1442,7 +1443,7 @@ def _rv_shop(f):
     lines += [f"**[ ⬇ Download your {label} — {name}{mb_s} ]**", ""]
     if f["verdict"] == "not_ready":
         lines += ["Because the verdict above is \"Not ready yet\", the shop "
-                  "will hit the same problem we found "
+                  "will hit the same problem found "
                   f"({f['residual_issue_plain']}) — settle item 1 first, or "
                   "expect the shop to call you.", ""]
     lines += ["Send this note along with the file — copy-paste it into the "
@@ -1517,20 +1518,20 @@ def _rv_warp(f):
         return lines
     ratio = w["ratio_vs_rest"]
     ratio_s = _rv_fmt(ratio, 1)
-    # the ratio compares the predicted lift to our ATTENTION THRESHOLD (the
-    # level at which we start flagging it) — say exactly that; "0.1× more
-    # likely than the rest" was both confusing and wrong.
+    # the ratio compares the predicted lift to the ATTENTION THRESHOLD (the
+    # level at which flagging starts) — say exactly that; "0.1× more likely
+    # than the rest" was both confusing and wrong.
     if isinstance(ratio, (int, float)) and ratio < 1.0:
         lines += ["**Warp check result (uncalibrated estimate):** good news "
                   "— the tendency to curl or lift off the print bed came in "
-                  "below the level where we start flagging it, including at "
+                  "below the flagging threshold, including at "
                   f"{w['hotspot_plain']}; that is an uncalibrated estimate — "
                   "a comparison, not a promise.", ""]
     else:
         lines += [f"**Warp check result (uncalibrated estimate):** "
                   f"{w['hotspot_plain']} tends to curl and lift off the "
-                  f"print bed — about **{ratio_s}× the level where we start "
-                  "flagging it** — an uncalibrated estimate, useful for "
+                  f"print bed — about **{ratio_s}× the flagging threshold** "
+                  "— an uncalibrated estimate, useful for "
                   "spotting the risky area, not for predicting exact "
                   "millimetres; trust the comparison, not the raw number.",
                   ""]
@@ -1552,7 +1553,7 @@ def _rv_trust(f):
     pct = t.get("frac_invented_pct")
     pct_s = _rv_fmt(pct, 0) if isinstance(pct, (int, float)) else "some"
     lines = ["## Optional: what the source photo actually saw", "",
-             f"We compared your file against the photo it was generated "
+             f"Your file was compared against the photo it was generated "
              f"from. About **{pct_s}%** of the surface (by area) — mostly "
              "the back and the inside — was never in that photo; the AI "
              "invented it to make the shape whole and printable. Invented "
@@ -1578,15 +1579,15 @@ def _rv_fine_print(f):
              "<summary><strong>The fine print</strong> (tap to expand)"
              "</summary>", ""]
     if f["verdict"] == "unreadable":
-        lines += ["**How honest are these numbers?** There are none — we "
-                  "couldn't read the file, so we changed nothing and "
-                  "measured nothing.", ""]
+        lines += ["**How honest are these numbers?** There are none — the "
+                  "file couldn't be read, so nothing was changed and "
+                  "nothing was measured.", ""]
     else:
         lines.append("**How honest are these numbers?**")
         if f["fix_ran"]:
-            lines.append("**Measured:** the receipt in \"What we changed\" — "
-                         "the percentage of your surface we kept and the "
-                         "maximum deviation — is computed directly on your "
+            lines.append("**Measured:** the receipt in \"What changed\" — "
+                         "the percentage of your surface that was kept and "
+                         "the maximum deviation — is computed directly on your "
                          "repaired file against your original — it is not an "
                          "estimate.")
         hollow = (" The hollow-space material figure is a rough geometric "
@@ -1605,14 +1606,14 @@ def _rv_fine_print(f):
                          "file didn't specify.")
         if f["decimation_used"] and f["tri_count_original"] \
                 and f["tri_count_analysis"]:
-            lines.append("For speed, we analysed a lightly simplified copy "
-                         f"of your model ({f['tri_count_original']:,} → "
+            lines.append("For speed, a lightly simplified copy of your model "
+                         f"was analysed ({f['tri_count_original']:,} → "
                          f"{f['tri_count_analysis']:,} facets); the file you "
                          "download is repaired at full quality.")
         lines.append("")
     lines += ["Nothing on this page is a guarantee your print succeeds — it "
-              "is our honest best reading of your file, and we've told you "
-              "plainly where it still needs a decision."]
+              "is the honest best reading of your file, and every place it "
+              "still needs a decision is stated plainly."]
     # the full technical report: a real web URL renders as a link; otherwise
     # it is named in words (report.md rides in the downloads) — NEVER a dead
     # or server-local link, and never offered at all when nothing was read.
@@ -1650,7 +1651,7 @@ def build_review(result, audience="novice") -> str:
         lines += _rv_fine_print(f)
         return "\n".join(lines).rstrip() + "\n"
     except Exception as e:
-        return ("> ❌ **WE COULDN'T READ THIS FILE** — so we changed nothing, "
+        return ("> ❌ **THIS FILE COULDN'T BE READ** — nothing was changed, "
                 "and there is no fixed file to download.\n> This usually "
                 "means the export went wrong, not that your model is bad.\n"
                 "> One thing to try: re-export from Meshy as .glb or .stl "
@@ -1660,9 +1661,9 @@ def build_review(result, audience="novice") -> str:
 
 # --- mechanical acceptance-criteria checker ------------------------------------
 _RV_VERDICT_PHRASES = ("READY TO PRINT", "NOT READY YET",
-                       "WE COULDN'T READ THIS FILE")
+                       "THIS FILE COULDN'T BE READ")
 
-_RV_HEADER_ORDER = ["## What we changed", "## Size check", "## See it",
+_RV_HEADER_ORDER = ["## What changed", "## Size check", "## See it",
                     "## Things to know before you print",
                     "## Your file + a note for the print shop",
                     "## Optional: will it warp", "The fine print"]
@@ -1742,7 +1743,7 @@ def review_selfcheck(md) -> list:
         elif hits[0][1] != 1:
             v.append(f"verdict phrase '{hits[0][0]}' appears {hits[0][1]} "
                      "times (must be once)")
-        unreadable = "WE COULDN'T READ THIS FILE" in md
+        unreadable = "THIS FILE COULDN'T BE READ" in md
         not_ready = "NOT READY YET" in md
 
         shop_span = _rv_find_shop_span(md)
@@ -1754,8 +1755,8 @@ def review_selfcheck(md) -> list:
 
         # -- 2. unreadable: refusal is a refusal ------------------------------
         if unreadable:
-            if "we changed nothing" not in md:
-                v.append("unreadable banner must say 'we changed nothing'")
+            if "nothing was changed" not in md:
+                v.append("unreadable banner must say 'nothing was changed'")
             if md.count("One thing to try:") != 1:
                 v.append("unreadable page must offer exactly one recovery "
                          "action")
