@@ -1509,12 +1509,11 @@ def _rv_warp(f):
     w = f["warp"]
     if not w["ran"]:
         lines += ["**[ Run warp check — about 1 minute ]**",
-                  "This runs a rough physics simulation of your print "
-                  "cooling down. What you'll get back is a **comparison, not "
-                  "a promise**: it ranks which parts of your model are more "
-                  "likely to curl or lift than others. It cannot predict "
-                  "exact millimetres — the numbers are uncalibrated "
-                  "estimates.", ""]
+                  "This runs an experimental physics simulation of your "
+                  "print cooling down — **untested**. What you get back is "
+                  "a **comparison, not a promise**: it ranks which parts of "
+                  "your model are more likely to curl or lift than others. "
+                  "It cannot predict exact millimetres.", ""]
         return lines
     ratio = w["ratio_vs_rest"]
     ratio_s = _rv_fmt(ratio, 1)
@@ -1522,16 +1521,16 @@ def _rv_warp(f):
     # level at which flagging starts) — say exactly that; "0.1× more likely
     # than the rest" was both confusing and wrong.
     if isinstance(ratio, (int, float)) and ratio < 1.0:
-        lines += ["**Warp check result (uncalibrated estimate):** good news "
+        lines += ["**Warp check result (untested estimate):** good news "
                   "— the tendency to curl or lift off the print bed came in "
                   "below the flagging threshold, including at "
-                  f"{w['hotspot_plain']}; that is an uncalibrated estimate — "
+                  f"{w['hotspot_plain']}; that is an untested estimate — "
                   "a comparison, not a promise.", ""]
     else:
-        lines += [f"**Warp check result (uncalibrated estimate):** "
+        lines += [f"**Warp check result (untested estimate):** "
                   f"{w['hotspot_plain']} tends to curl and lift off the "
                   f"print bed — about **{ratio_s}× the flagging threshold** "
-                  "— an uncalibrated estimate, useful for "
+                  "— an untested estimate, useful for "
                   "spotting the risky area, not for predicting exact "
                   "millimetres; trust the comparison, not the raw number.",
                   ""]
@@ -1599,7 +1598,7 @@ def _rv_fine_print(f):
                      "printer software — your shop's slicer software (the "
                      "program that prepares files for their printer) has the "
                      f"final word.{hollow}")
-        lines.append("**Uncalibrated:** the optional warp number — trust its "
+        lines.append("**Untested:** the optional warp number — trust its "
                      "ranking of risky spots, not its exact values.")
         if f["units_source"] == "assumed_mm":
             lines.append("The size check assumed millimetres because your "
@@ -1970,9 +1969,9 @@ def review_selfcheck(md) -> list:
                     for sent in re.split(r"(?<=[.!?])\s+",
                                          warp_txt.replace("\n", " ")):
                         if re.search(r"[\d.]+×", sent) and \
-                                "uncalibrated" not in sent:
+                                "untested" not in sent:
                             v.append("warp ratio not in the same sentence as "
-                                     "'uncalibrated'")
+                                     "'untested'")
                 if btn and "a **comparison, not a promise**" not in warp_txt \
                         and "a comparison, not a promise" not in warp_txt:
                     v.append("warp pre-click framing missing 'a comparison, "

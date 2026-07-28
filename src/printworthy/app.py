@@ -43,7 +43,7 @@ _GALLERY_CAP = {
     "premortem": "Where printing is risky (red = needs supports, may scar, "
                  "or is too thin)",
     "traps": "Pockets that could trap liquid or loose material",
-    "warp": "Predicted print warp — physics estimate, uncalibrated",
+    "warp": "Predicted print warp — experimental, untested",
     "strength": "Stronger vs weaker regions — comparative estimate",
     "orient": "Suggested printing direction",
     "support": "Where supports will touch (in the applied printing "
@@ -65,17 +65,15 @@ _UNITS = {"Auto-detect": None,
           "Inches": "inch"}
 
 INTRO = """# printworthy
-**Drop a 3D model. Get back a print-ready file and a plain-English report —
-for printing at home or handing to a shop.**
+**Drop a 3D model. Get back a print-ready file and a summary report.**
 
-It checks the file, fixes only what blocks printing (and reports exactly how
-much surface it touched), sanity-checks the size, and flags thin walls,
-trapped pockets, and support-heavy angles — each with a next step.
+Fixes only what blocks printing, and reports exactly how much was altered.
+Also sanity-checks the size, and flags thin walls, trapped pockets, and
+support-heavy angles — each with a fix and a next step.
 
-<small>Research preview. Checks are geometric estimates. Optional warp
-prediction is a real physics simulation but **uncalibrated** — it shows
-where and roughly how much, not certified numbers. Not a slicer; verdicts
-are advisory. The final call is your printer's, or your print shop's.</small>"""
+<small>Use at your own risk. Checks are geometric estimates. Optional warp
+prediction is an experimental physics simulation — **untested**. Not a
+slicer; results are advisory only.</small>"""
 
 PRIVACY = ("<small>**Privacy:** your file is processed in memory and is not "
            "stored, logged, shared, or used for training — nothing is "
@@ -401,8 +399,8 @@ def build_demo():
                         label="Suggest the best printing orientation",
                         value=True)
                 fem = gr.Checkbox(
-                    label="Predict warp — ~1 min, physics estimate "
-                          "(uncalibrated)", value=False)
+                    label="Predict warp — ~1 min, experimental "
+                          "(untested)", value=False)
                 with gr.Accordion("Size & units (your file's own size is "
                                   "kept unless you change this)",
                                   open=False):
